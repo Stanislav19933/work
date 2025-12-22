@@ -60,7 +60,6 @@ function Confetti({ run }) {
 }
 
 export default function Page() {
-  const [botOpenedHint, setBotOpenedHint] = useState(false);
   const [botStartedHint, setBotStartedHint] = useState(false);
 
   const [board, setBoard] = useState(Array(9).fill(EMPTY));
@@ -77,12 +76,9 @@ export default function Page() {
 
   const mounted = useRef(false);
 
-  // Telegram Login Widget: вставляется скриптом
   useEffect(() => {
-    // Флаги открывал/нажимал Start — чисто для UX
-    const opened = localStorage.getItem("bot_opened") === "1";
+    // Флаг «нажал Start» — чисто для UX
     const started = localStorage.getItem("bot_started") === "1";
-    setBotOpenedHint(opened);
     setBotStartedHint(started);
 
     mounted.current = true;
@@ -222,24 +218,17 @@ export default function Page() {
     localStorage.setItem("bot_started", "1");
     setBotStartedHint(true);
     // Здесь “быстрый юмор”: бот не читает мысли, зато читает /start.
-    setToast("Отлично. Теперь бот не стесняется писать первым 🙂");
+    setToast("Открываем бота. Нажми Start — и вернись играть 💜");
   }
 
-  function markBotOpened() {
-    localStorage.setItem("bot_opened", "1");
-    setBotOpenedHint(true);
-    setToast("Открываем бота в Telegram ❤️");
-  }
-
-  const connectStepsOk = botOpenedHint && botStartedHint;
-  const showGame = connectStepsOk;
+  const showGame = botStartedHint;
 
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 18, background: "radial-gradient(circle at 10% 10%, rgba(255,227,255,0.28), transparent 32%), radial-gradient(circle at 80% 20%, rgba(214,245,255,0.32), transparent 32%), #f7f5ff" }}>
       <Confetti run={confettiRun} />
 
       {!showGame && (
-        <div style={{ width: "min(960px, 100%)", display: "grid", gap: 16, animation: "fadeSlide 320ms ease" }}>
+        <div style={{ width: "min(900px, 100%)", display: "grid", gap: 16, animation: "fadeSlide 280ms ease" }}>
           <div style={{
             background: "linear-gradient(120deg, rgba(192,92,255,0.16), rgba(109,214,255,0.14))",
             border: "1px solid rgba(192,92,255,0.18)",
@@ -250,10 +239,10 @@ export default function Page() {
             backdropFilter: "blur(10px)"
           }}>
             <div style={{ fontSize: 28, fontWeight: 750, letterSpacing: "-0.02em" }}>
-              Привет, игра скоро начнётся
+              Привет! Давай подключим Telegram
             </div>
             <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 15, lineHeight: 1.5 }}>
-              Сначала подключи Telegram и нажми Start у бота — это займёт меньше минуты. Потом поле откроется, и можно играть за промокод.
+              Открой бота, нажми Start — и поле с игрой сразу появится. Это один шаг и меньше минуты.
             </div>
           </div>
 
@@ -266,101 +255,52 @@ export default function Page() {
             display: "grid",
             gap: 12,
             backdropFilter: "blur(10px)",
-            animation: "lift 320ms ease"
+            animation: "lift 280ms ease"
           }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
               <div>
-                <div style={{ fontSize: 20, fontWeight: 750 }}>Два шага — и начнём</div>
+                <div style={{ fontSize: 20, fontWeight: 750 }}>Один шаг — и игра твоя</div>
                 <div style={{ color: "var(--muted)", marginTop: 6 }}>
-                  Бот узнает твой чат и сможет прислать подарок. Всё просто.
+                  Бот узнает твой чат и сможет отправить подарок после игры.
                 </div>
               </div>
               <div style={{ padding: "8px 12px", borderRadius: 999, background: "rgba(192,92,255,0.14)", color: "rgba(99,63,143,0.9)", fontWeight: 700, fontSize: 12 }}>
-                перед игрой
+                обязательно перед стартом
               </div>
             </div>
 
-            <div style={{ display: "grid", gap: 12 }}>
-              <div style={{
-                padding: 12,
-                borderRadius: 18,
-                border: "1px solid rgba(27,27,31,0.10)",
-                background: "rgba(255,255,255,0.7)",
-                boxShadow: "var(--shadow2)",
-                animation: botOpenedHint ? "pulse 820ms ease" : "fadeIn 260ms ease"
-              }}>
-                <div style={{ fontWeight: 700 }}>
-                  {botOpenedHint ? "✅ Шаг 1: Открыли бота" : "Шаг 1: открыть бота"}
-                </div>
-                <div style={{ color: "var(--muted)", marginTop: 6, lineHeight: 1.35 }}>
-                  Открой бота в Telegram — это мгновенно.
-                </div>
-                <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <a
-                    href={`https://t.me/${BOT_USERNAME}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={markBotOpened}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 14,
-                      border: "1px solid rgba(192,92,255,0.28)",
-                      background: "linear-gradient(90deg, rgba(192,92,255,0.18), rgba(109,214,255,0.16))",
-                      boxShadow: "var(--shadow2)",
-                      fontWeight: 700
-                    }}
-                  >
-                    Открыть бота
-                  </a>
-                </div>
+            <div style={{
+              padding: 14,
+              borderRadius: 18,
+              border: "1px solid rgba(27,27,31,0.10)",
+              background: "rgba(255,255,255,0.75)",
+              boxShadow: "var(--shadow2)",
+              animation: botStartedHint ? "pulse 820ms ease" : "fadeIn 240ms ease"
+            }}>
+              <div style={{ fontWeight: 750 }}>
+                {botStartedHint ? "✅ Бот открыт и Start нажат" : "Открой бота и нажми Start"}
               </div>
-
-              <div style={{
-                padding: 12,
-                borderRadius: 18,
-                border: "1px solid rgba(27,27,31,0.10)",
-                background: "rgba(255,255,255,0.7)",
-                boxShadow: "var(--shadow2)",
-                animation: botStartedHint ? "pulse 820ms ease" : "fadeIn 260ms ease"
-              }}>
-                <div style={{ fontWeight: 700 }}>
-                  {botStartedHint ? "✅ Шаг 2: Start у бота нажат" : "Шаг 2: нажми Start у бота"}
-                </div>
-                <div style={{ color: "var(--muted)", marginTop: 6, lineHeight: 1.35 }}>
-                  Telegram не даёт боту писать первой. Start — и он принесёт твой результат.
-                </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                  <a
-                    href={`https://t.me/${BOT_USERNAME}?start=play`}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={markBotStarted}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 14,
-                      border: "1px solid rgba(192,92,255,0.28)",
-                      background: "linear-gradient(90deg, rgba(192,92,255,0.18), rgba(109,214,255,0.16))",
-                      boxShadow: "var(--shadow2)",
-                      fontWeight: 700
-                    }}
-                  >
-                    Открыть бота
-                  </a>
-
-                  <button
-                    onClick={() => { localStorage.removeItem("bot_started"); setBotStartedHint(false); setToast("Сбросили шаг 2"); }}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 14,
-                      border: "1px solid rgba(27,27,31,0.12)",
-                      background: "rgba(255,255,255,0.82)",
-                      boxShadow: "var(--shadow2)",
-                      cursor: "pointer"
-                    }}
-                  >
-                    Сброс шага 2
-                  </button>
-                </div>
+              <div style={{ color: "var(--muted)", marginTop: 6, lineHeight: 1.4 }}>
+                Нажми кнопку ниже, перейдёшь в Telegram. Там жми Start — и возвращайся, поле будет ждать тебя.
+              </div>
+              <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <a
+                  href={`https://t.me/${BOT_USERNAME}?start=play`}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={markBotStarted}
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: 16,
+                    border: "1px solid rgba(192,92,255,0.28)",
+                    background: "linear-gradient(90deg, rgba(192,92,255,0.18), rgba(109,214,255,0.16))",
+                    boxShadow: "var(--shadow2)",
+                    fontWeight: 750,
+                    fontSize: 15
+                  }}
+                >
+                  Открыть бота в Telegram
+                </a>
               </div>
             </div>
 
@@ -368,13 +308,13 @@ export default function Page() {
               padding: 12,
               borderRadius: 18,
               border: "1px solid rgba(27,27,31,0.10)",
-              background: connectStepsOk
-                ? "linear-gradient(180deg, rgba(43,182,115,0.14), rgba(255,255,255,0.72))"
-                : "rgba(255,255,255,0.72)",
+              background: botStartedHint
+                ? "linear-gradient(180deg, rgba(43,182,115,0.16), rgba(255,255,255,0.74))"
+                : "rgba(255,255,255,0.74)",
               boxShadow: "var(--shadow2)"
             }}>
               <div style={{ fontWeight: 750 }}>
-                {connectStepsOk ? "Готово! Поле открывается ❤️" : "Сделай два шага — и поле откроется ❤️"}
+                {botStartedHint ? "Готово! Возвращайся — игра уже открыта ❤️" : "После Start вернись сюда, поле откроется ❤️"}
               </div>
               <div style={{ color: "var(--muted)", marginTop: 6 }}>
                 Победа подарит промокод, бот шепнёт его тебе в Telegram.
