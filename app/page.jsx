@@ -95,6 +95,20 @@ export default function Page() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  useEffect(() => {
+    function handleError(e) {
+      e.preventDefault();
+      setToast("Что-то пошло не так. Обнови страницу и попробуй снова.");
+      return false;
+    }
+    window.addEventListener("error", handleError);
+    window.addEventListener("unhandledrejection", handleError);
+    return () => {
+      window.removeEventListener("error", handleError);
+      window.removeEventListener("unhandledrejection", handleError);
+    };
+  }, []);
+
   const r = useMemo(() => checkWinner(board), [board]);
 
   useEffect(() => {
