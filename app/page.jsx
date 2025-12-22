@@ -156,6 +156,13 @@ export default function Page() {
   }
 
   useEffect(() => {
+    return () => {
+      if (ambientRef.current.timer) clearInterval(ambientRef.current.timer);
+      ambientRef.current.timer = null;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!mounted.current) return;
 
     // победы/ничьи
@@ -190,16 +197,12 @@ export default function Page() {
       clearTimeout(cpuTimerRef.current);
       cpuTimerRef.current = null;
     }
-    if (!connectStepsOk) return;
     if (turn !== CPU) return;
 
     setBusy(true);
     setStatus("Компьютер думает…");
-    cpuTimerRef.current = setTimeout(() => {
+    const timer = setTimeout(() => {
       setBoard(prev => {
-        // если пока думали кто-то победил — не ходим
-        const res = checkWinner(prev);
-        if (res.winner) return prev;
         const idx = cpuMove(prev, 0.08);
         if (idx == null || prev[idx] !== EMPTY) return prev;
         const next = prev.slice();
@@ -211,6 +214,7 @@ export default function Page() {
       setStatus("Твой ход ✨");
       cpuTimerRef.current = null;
     }, 420);
+    cpuTimerRef.current = timer;
 
     return () => {
       if (cpuTimerRef.current) {
@@ -218,7 +222,7 @@ export default function Page() {
         cpuTimerRef.current = null;
       }
     };
-  }, [r.winner, turn, connectStepsOk]);
+  }, [r.winner, turn]);
 
   const outcomeSentRef = useRef({ win: false, lose: false });
 
