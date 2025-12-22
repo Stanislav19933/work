@@ -147,8 +147,8 @@ export default function Page() {
     }
 
     // если игра не закончена — управление ходом
-    if (turn === CPU && !busy) {
-      setBusy(true);
+    if (turn === CPU) {
+      if (!busy) setBusy(true);
       setStatus("Компьютер думает…");
       const t = setTimeout(() => {
         setBoard(prev => {
@@ -222,6 +222,7 @@ export default function Page() {
     if (busy) return;
     if (result) return;
     if (turn !== HUMAN) return;
+    setBusy(true);
     setBoard(prev => {
       if (prev[i] !== EMPTY) return prev;
       const next = prev.slice();
@@ -252,288 +253,333 @@ export default function Page() {
   const connectStepsOk = tgConnectedHint && botStartedHint;
 
   return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 18 }}>
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 18, background: "radial-gradient(circle at 10% 10%, rgba(255,227,255,0.28), transparent 32%), radial-gradient(circle at 80% 20%, rgba(214,245,255,0.32), transparent 32%), #f7f5ff" }}>
       <Confetti run={confettiRun} />
 
-      <div style={{
-        width: "min(980px, 100%)",
-        display: "grid",
-        gap: 16,
-        gridTemplateColumns: "1.2fr 0.8fr"
-      }}>
+      <div style={{ width: "min(1100px, 100%)", display: "grid", gap: 16 }}>
         <div style={{
-          background: "var(--card)",
-          border: "1px solid var(--cardBorder)",
-          borderRadius: "var(--radius)",
+          background: "linear-gradient(120deg, rgba(192,92,255,0.16), rgba(109,214,255,0.12))",
+          border: "1px solid rgba(192,92,255,0.18)",
+          borderRadius: "24px",
           boxShadow: "var(--shadow)",
-          padding: 18,
+          padding: 20,
+          color: "rgba(24,24,28,0.92)",
           backdropFilter: "blur(10px)"
         }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 28, fontWeight: 720, letterSpacing: "-0.02em" }}>
-                Крестики-нолики
-              </div>
-              <div style={{ color: "var(--muted)", marginTop: 6 }}>
-                Победа — промокод. Результат приходит в Telegram.
-              </div>
-            </div>
-
-            <button
-              onClick={resetGame}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 14,
-                border: "1px solid rgba(27,27,31,0.12)",
-                background: "rgba(255,255,255,0.65)",
-                boxShadow: "var(--shadow2)",
-                cursor: "pointer"
-              }}
-            >
-              Сбросить
-            </button>
+          <div style={{ fontSize: 28, fontWeight: 750, letterSpacing: "-0.02em" }}>
+            Крестики-нолики с подарком для тебя
           </div>
-
-          <div style={{
-            marginTop: 14,
-            display: "grid",
-            gridTemplateColumns: "1fr",
-            gap: 12
-          }}>
-            <div style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
-              padding: 14,
-              borderRadius: 18,
-              background: "rgba(255,255,255,0.55)",
-              border: "1px solid rgba(27,27,31,0.10)"
-            }}>
-              <div>
-                <div style={{ fontWeight: 650 }}>{status}</div>
-                <div style={{ color: "var(--muted)", marginTop: 4 }}>
-                  {connectStepsOk ? "Подключение к Telegram готово." : "Перед игрой подключи Telegram (2 шага)."}
-                </div>
-              </div>
-
-              {promo && (
-                <button
-                  onClick={copyPromo}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(192,92,255,0.28)",
-                    background: "linear-gradient(90deg, rgba(192,92,255,0.16), rgba(109,214,255,0.14))",
-                    cursor: "pointer",
-                    animation: "glow 1.4s ease-in-out infinite"
-                  }}
-                  title="Скопировать промокод"
-                >
-                  {promo} · Скопировать
-                </button>
-              )}
-            </div>
-
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 10,
-              padding: 12,
-              borderRadius: 22,
-              background: "rgba(255,255,255,0.55)",
-              border: "1px solid rgba(27,27,31,0.10)"
-            }}>
-              {board.map((v, i) => {
-                const isWin = winLine?.includes(i);
-                return (
-                  <button
-                    key={i}
-                    onClick={() => onCell(i)}
-                    disabled={busy || !!result || turn !== HUMAN}
-                    style={{
-                      height: 110,
-                      borderRadius: 18,
-                      border: "1px solid rgba(27,27,31,0.10)",
-                      background: isWin
-                        ? "linear-gradient(180deg, rgba(192,92,255,0.18), rgba(109,214,255,0.12))"
-                        : "rgba(255,255,255,0.68)",
-                      boxShadow: isWin ? "0 0 0 2px rgba(192,92,255,0.18), var(--shadow2)" : "var(--shadow2)",
-                      cursor: "pointer",
-                      transition: "transform 120ms ease, filter 120ms ease",
-                      filter: busy ? "saturate(0.95)" : "none",
-                      position: "relative",
-                      overflow: "hidden"
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0px)"; }}
-                    aria-label={`cell-${i}`}
-                  >
-                    <span style={{
-                      display: "inline-block",
-                      fontSize: 54,
-                      fontWeight: 780,
-                      letterSpacing: "-0.05em",
-                      transform: v ? "scale(1)" : "scale(0.92)",
-                      opacity: v ? 1 : 0,
-                      animation: v ? "pop 140ms ease-out" : "none",
-                      color: v === HUMAN ? "rgba(27,27,31,0.90)" : "rgba(192,92,255,0.92)"
-                    }}>
-                      {v ?? ""}
-                    </span>
-
-                    {!v && !result && turn === HUMAN && !busy && (
-                      <span style={{
-                        position: "absolute",
-                        inset: 0,
-                        opacity: 0,
-                        transition: "opacity 120ms ease",
-                        background: "linear-gradient(90deg, rgba(192,92,255,0.12), rgba(109,214,255,0.10))"
-                      }} />
-                    )}
-
-                    {isWin && (
-                      <span style={{
-                        position: "absolute",
-                        left: "-40%",
-                        top: 0,
-                        width: "40%",
-                        height: "100%",
-                        background: "rgba(255,255,255,0.35)",
-                        transform: "skewX(-18deg)",
-                        animation: "shimmer 900ms ease-in-out infinite"
-                      }} />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {result && (
-              <div style={{
-                padding: 14,
-                borderRadius: 18,
-                border: "1px solid rgba(27,27,31,0.10)",
-                background: "rgba(255,255,255,0.55)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 12
-              }}>
-                <div style={{ color: "var(--muted)" }}>
-                  {result === "win" && "Промокод уже на экране. Сообщение отправлено в Telegram (если подключено)."}
-                  {result === "lose" && "Сообщение о проигрыше отправлено в Telegram (если подключено)."}
-                  {result === "draw" && "Ничья — иногда это стиль."}
-                </div>
-                <button
-                  onClick={resetGame}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(27,27,31,0.12)",
-                    background: "rgba(255,255,255,0.65)",
-                    boxShadow: "var(--shadow2)",
-                    cursor: "pointer"
-                  }}
-                >
-                  Сыграть ещё раз
-                </button>
-              </div>
-            )}
+          <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 15, lineHeight: 1.45 }}>
+            Сделай два простых шага в Telegram — и игра откроется. Победа дарит промокод, а бот сразу пришлёт его в личные сообщения.
           </div>
         </div>
 
         <div style={{
-          background: "var(--card)",
-          border: "1px solid var(--cardBorder)",
-          borderRadius: "var(--radius)",
-          boxShadow: "var(--shadow)",
-          padding: 18,
-          backdropFilter: "blur(10px)",
-          alignSelf: "start"
+          display: "grid",
+          gap: 16,
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))"
         }}>
-          <div style={{ fontSize: 18, fontWeight: 750 }}>Подключение Telegram</div>
-          <div style={{ color: "var(--muted)", marginTop: 8, lineHeight: 1.35 }}>
-            Чтобы получить результат в Telegram, нужно войти через него и разрешить боту писать.
-            Это 2 шага и занимает ~10 секунд.
+          <div style={{
+            background: "var(--card)",
+            border: "1px solid var(--cardBorder)",
+            borderRadius: "var(--radius)",
+            boxShadow: "var(--shadow)",
+            padding: 18,
+            backdropFilter: "blur(10px)"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 750 }}>1. Подключи Telegram</div>
+                <div style={{ color: "var(--muted)", marginTop: 6 }}>
+                  Нужно всего 2 шага, чтобы бот знал, куда отправить подарок.
+                </div>
+              </div>
+              <div style={{ padding: "8px 12px", borderRadius: 999, background: "rgba(192,92,255,0.12)", color: "rgba(99,63,143,0.9)", fontWeight: 700, fontSize: 12 }}>
+                обязательно перед игрой
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+              <div style={{
+                padding: 12,
+                borderRadius: 18,
+                border: "1px solid rgba(27,27,31,0.10)",
+                background: "rgba(255,255,255,0.65)"
+              }}>
+                <div style={{ fontWeight: 700 }}>
+                  {tgConnectedHint ? "✅ Шаг 1: Telegram подключён" : "Шаг 1: войти через Telegram"}
+                </div>
+                <div style={{ color: "var(--muted)", marginTop: 6, lineHeight: 1.35 }}>
+                  Нажми кнопку ниже, подтвердить вход — и всё. Это занимает пару секунд.
+                </div>
+                <div id="tg-widget-mount" style={{ marginTop: 10 }} />
+              </div>
+
+              <div style={{
+                padding: 12,
+                borderRadius: 18,
+                border: "1px solid rgba(27,27,31,0.10)",
+                background: "rgba(255,255,255,0.65)"
+              }}>
+                <div style={{ fontWeight: 700 }}>
+                  {botStartedHint ? "✅ Шаг 2: Нажатие Start в боте" : "Шаг 2: нажми Start у бота"}
+                </div>
+                <div style={{ color: "var(--muted)", marginTop: 6, lineHeight: 1.35 }}>
+                  Telegram не даёт боту писать первой. Сделай Start — и бот сможет прислать твой результат.
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                  <a
+                    href={`https://t.me/${BOT_USERNAME}?start=play`}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={markBotStarted}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(192,92,255,0.28)",
+                      background: "linear-gradient(90deg, rgba(192,92,255,0.16), rgba(109,214,255,0.14))",
+                      boxShadow: "var(--shadow2)",
+                      fontWeight: 700
+                    }}
+                  >
+                    Открыть бота
+                  </a>
+
+                  <button
+                    onClick={() => { localStorage.removeItem("bot_started"); setBotStartedHint(false); setToast("Сбросили шаг 2"); }}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(27,27,31,0.12)",
+                      background: "rgba(255,255,255,0.75)",
+                      boxShadow: "var(--shadow2)",
+                      cursor: "pointer"
+                    }}
+                  >
+                    Сброс шага 2
+                  </button>
+                </div>
+              </div>
+
+              <div style={{
+                padding: 12,
+                borderRadius: 18,
+                border: "1px solid rgba(27,27,31,0.10)",
+                background: connectStepsOk
+                  ? "linear-gradient(180deg, rgba(43,182,115,0.12), rgba(255,255,255,0.65))"
+                  : "rgba(255,255,255,0.65)"
+              }}>
+                <div style={{ fontWeight: 750 }}>
+                  {connectStepsOk ? "Шаги сделаны! Игра доступна ниже." : "Сделай оба шага — и игра откроется ниже."}
+                </div>
+                <div style={{ color: "var(--muted)", marginTop: 6 }}>
+                  Победа подарит промокод, а бот пришлёт его в твою переписку.
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
-            <div style={{
-              padding: 12,
-              borderRadius: 18,
-              border: "1px solid rgba(27,27,31,0.10)",
-              background: "rgba(255,255,255,0.55)"
-            }}>
-              <div style={{ fontWeight: 700 }}>
-                {tgConnectedHint ? "✅ Шаг 1: Telegram подключён" : "Шаг 1: Войти через Telegram"}
+          <div style={{
+            background: "var(--card)",
+            border: "1px solid var(--cardBorder)",
+            borderRadius: "var(--radius)",
+            boxShadow: "var(--shadow)",
+            padding: 18,
+            backdropFilter: "blur(10px)",
+            position: "relative",
+            overflow: "hidden"
+          }}>
+            {!connectStepsOk && (
+              <div style={{
+                position: "absolute",
+                inset: 0,
+                background: "linear-gradient(180deg, rgba(255,255,255,0.78), rgba(247,245,255,0.92))",
+                display: "grid",
+                placeItems: "center",
+                textAlign: "center",
+                padding: 18,
+                zIndex: 5
+              }}>
+                <div style={{ maxWidth: 360 }}>
+                  <div style={{ fontWeight: 750, fontSize: 18 }}>Сначала Telegram, потом игра</div>
+                  <div style={{ color: "var(--muted)", marginTop: 8, lineHeight: 1.4 }}>
+                    Пройди два шага слева: вход и Start. Как только оба кружочка станут зелёными, поле откроется и можно играть.
+                  </div>
+                </div>
               </div>
-              <div style={{ color: "var(--muted)", marginTop: 6 }}>
-                Нажми кнопку ниже, появится мини-окно авторизации. Подтверди вход — и готово.
+            )}
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 26, fontWeight: 720, letterSpacing: "-0.02em" }}>
+                  Крестики-нолики
+                </div>
+                <div style={{ color: "var(--muted)", marginTop: 6 }}>
+                  Победа — промокод. Результат придёт в твой Telegram.
+                </div>
               </div>
-              <div id="tg-widget-mount" style={{ marginTop: 10 }} />
+
+              <button
+                onClick={resetGame}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(27,27,31,0.12)",
+                  background: "rgba(255,255,255,0.75)",
+                  boxShadow: "var(--shadow2)",
+                  cursor: "pointer"
+                }}
+              >
+                Сбросить
+              </button>
             </div>
 
             <div style={{
-              padding: 12,
-              borderRadius: 18,
-              border: "1px solid rgba(27,27,31,0.10)",
-              background: "rgba(255,255,255,0.55)"
+              marginTop: 14,
+              display: "grid",
+              gridTemplateColumns: "1fr",
+              gap: 12,
+              opacity: connectStepsOk ? 1 : 0.45,
+              transition: "opacity 200ms ease"
             }}>
-              <div style={{ fontWeight: 700 }}>
-                {botStartedHint ? "✅ Шаг 2: Start у бота сделан" : "Шаг 2: Нажать Start у бота"}
-              </div>
-              <div style={{ color: "var(--muted)", marginTop: 6 }}>
-                Telegram запрещает боту писать первым. Нажми Start — и бот сможет прислать результат.
-              </div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                <a
-                  href={`https://t.me/${BOT_USERNAME}?start=play`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={markBotStarted}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(192,92,255,0.28)",
-                    background: "linear-gradient(90deg, rgba(192,92,255,0.16), rgba(109,214,255,0.14))",
-                    boxShadow: "var(--shadow2)"
-                  }}
-                >
-                  Открыть бота
-                </a>
+              <div style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                padding: 14,
+                borderRadius: 18,
+                background: "rgba(255,255,255,0.65)",
+                border: "1px solid rgba(27,27,31,0.10)"
+              }}>
+                <div>
+                  <div style={{ fontWeight: 650 }}>{status}</div>
+                  <div style={{ color: "var(--muted)", marginTop: 4 }}>
+                    {connectStepsOk ? "Ходим по очереди. Компьютер думает сразу после твоего шага." : "Сделай два шага слева, чтобы начать игру."}
+                  </div>
+                </div>
 
-                <button
-                  onClick={() => { localStorage.removeItem("bot_started"); setBotStartedHint(false); setToast("Сбросили шаг 2"); }}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(27,27,31,0.12)",
-                    background: "rgba(255,255,255,0.65)",
-                    boxShadow: "var(--shadow2)",
-                    cursor: "pointer"
-                  }}
-                >
-                  Сброс шага 2
-                </button>
+                {promo && (
+                  <button
+                    onClick={copyPromo}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(192,92,255,0.28)",
+                      background: "linear-gradient(90deg, rgba(192,92,255,0.16), rgba(109,214,255,0.14))",
+                      cursor: "pointer",
+                      animation: "glow 1.4s ease-in-out infinite"
+                    }}
+                    title="Скопировать промокод"
+                  >
+                    {promo} · Скопировать
+                  </button>
+                )}
               </div>
-            </div>
 
-            <div style={{
-              padding: 12,
-              borderRadius: 18,
-              border: "1px solid rgba(27,27,31,0.10)",
-              background: connectStepsOk
-                ? "linear-gradient(180deg, rgba(43,182,115,0.10), rgba(255,255,255,0.55))"
-                : "rgba(255,255,255,0.55)"
-            }}>
-              <div style={{ fontWeight: 750 }}>
-                {connectStepsOk ? "Готово. Можно играть." : "Подключи Telegram и нажми Start."}
-              </div>
-              <div style={{ color: "var(--muted)", marginTop: 6 }}>
-                Потом выиграй или проиграй — и сообщение прилетит в твой Telegram.
-              </div>
-            </div>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: 10,
+                padding: 12,
+                borderRadius: 22,
+                background: "rgba(255,255,255,0.65)",
+                border: "1px solid rgba(27,27,31,0.10)"
+              }}>
+                {board.map((v, i) => {
+                  const isWin = winLine?.includes(i);
+                  const disabled = busy || !!result || turn !== HUMAN || !connectStepsOk;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => onCell(i)}
+                      disabled={disabled}
+                      style={{
+                        height: 110,
+                        borderRadius: 18,
+                        border: "1px solid rgba(27,27,31,0.10)",
+                        background: isWin
+                          ? "linear-gradient(180deg, rgba(192,92,255,0.18), rgba(109,214,255,0.12))"
+                          : "rgba(255,255,255,0.78)",
+                        boxShadow: isWin ? "0 0 0 2px rgba(192,92,255,0.18), var(--shadow2)" : "var(--shadow2)",
+                        cursor: disabled ? "not-allowed" : "pointer",
+                        transition: "transform 120ms ease, filter 120ms ease",
+                        filter: busy ? "saturate(0.95)" : "none",
+                        position: "relative",
+                        overflow: "hidden"
+                      }}
+                      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.transform = "translateY(-2px)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0px)"; }}
+                      aria-label={`cell-${i}`}
+                    >
+                      <span style={{
+                        display: "inline-block",
+                        fontSize: 54,
+                        fontWeight: 780,
+                        letterSpacing: "-0.05em",
+                        transform: v ? "scale(1)" : "scale(0.92)",
+                        opacity: v ? 1 : 0,
+                        animation: v ? "pop 140ms ease-out" : "none",
+                        color: v === HUMAN ? "rgba(27,27,31,0.90)" : "rgba(192,92,255,0.92)"
+                      }}>
+                        {v ?? ""}
+                      </span>
 
-            <div style={{ color: "var(--muted)", fontSize: 12 }}>
-              Если бот не пишет, нажми «Сброс шага 2» и сделай Start ещё раз. Бот не читает мысли, зато читает /start.
+                      {!v && !result && turn === HUMAN && !busy && connectStepsOk && (
+                        <span style={{
+                          position: "absolute",
+                          inset: 0,
+                          opacity: 0,
+                          transition: "opacity 120ms ease",
+                          background: "linear-gradient(90deg, rgba(192,92,255,0.12), rgba(109,214,255,0.10))"
+                        }} />
+                      )}
+
+                      {isWin && (
+                        <span style={{
+                          position: "absolute",
+                          left: "-40%",
+                          top: 0,
+                          width: "40%",
+                          height: "100%",
+                          background: "rgba(255,255,255,0.35)",
+                          transform: "skewX(-18deg)",
+                          animation: "shimmer 900ms ease-in-out infinite"
+                        }} />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {result && (
+                <div style={{
+                  padding: 14,
+                  borderRadius: 18,
+                  border: "1px solid rgba(27,27,31,0.10)",
+                  background: "rgba(255,255,255,0.65)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12
+                }}>
+                  <div style={{ color: "var(--muted)" }}>
+                    {result === "win" && "Промокод на экране и в Telegram. Пользуйся с удовольствием!"}
+                    {result === "lose" && "Бот пришлёт сообщение о результате. Можно попробовать снова."}
+                    {result === "draw" && "Ничья — иногда это про выдержку. Попробуем ещё раз?"}
+                  </div>
+                  <button
+                    onClick={resetGame}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(27,27,31,0.12)",
+                      background: "rgba(255,255,255,0.75)",
+                      boxShadow: "var(--shadow2)",
+                      cursor: "pointer"
+                    }}
+                  >
+                    Сыграть ещё раз
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -558,10 +604,7 @@ export default function Page() {
       )}
 
       <style jsx>{`
-        @media (max-width: 920px) {
-          div[style*="grid-template-columns: 1.2fr 0.8fr"] {
-            grid-template-columns: 1fr !important;
-          }
+        @media (max-width: 820px) {
           button[aria-label^="cell-"] {
             height: 96px !important;
           }
