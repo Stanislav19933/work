@@ -193,7 +193,7 @@ export default function Page() {
     try {
       await sendToTelegram({ result: "win", code });
     } catch (e) {
-      setToast("Подключи Telegram и нажми Start у бота — иначе он не сможет написать тебе.");
+      setToast("Моя хорошая, подключи Telegram и нажми Start — тогда бот шепнёт тебе промокод.");
     }
   }
 
@@ -203,7 +203,7 @@ export default function Page() {
     try {
       await sendToTelegram({ result: "lose" });
     } catch (e) {
-      setToast("Чтобы получить сообщение в Telegram, подключи Telegram и нажми Start у бота.");
+      setToast("Подключи Telegram и нажми Start у бота — он пришлёт тебе результат.");
     }
   }
 
@@ -251,66 +251,68 @@ export default function Page() {
   }
 
   const connectStepsOk = tgConnectedHint && botStartedHint;
+  const showGame = connectStepsOk;
 
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 18, background: "radial-gradient(circle at 10% 10%, rgba(255,227,255,0.28), transparent 32%), radial-gradient(circle at 80% 20%, rgba(214,245,255,0.32), transparent 32%), #f7f5ff" }}>
       <Confetti run={confettiRun} />
 
-      <div style={{ width: "min(1100px, 100%)", display: "grid", gap: 16 }}>
-        <div style={{
-          background: "linear-gradient(120deg, rgba(192,92,255,0.16), rgba(109,214,255,0.12))",
-          border: "1px solid rgba(192,92,255,0.18)",
-          borderRadius: "24px",
-          boxShadow: "var(--shadow)",
-          padding: 20,
-          color: "rgba(24,24,28,0.92)",
-          backdropFilter: "blur(10px)"
-        }}>
-          <div style={{ fontSize: 28, fontWeight: 750, letterSpacing: "-0.02em" }}>
-            Крестики-нолики с подарком для тебя
+      {!showGame && (
+        <div style={{ width: "min(960px, 100%)", display: "grid", gap: 16, animation: "fadeSlide 320ms ease" }}>
+          <div style={{
+            background: "linear-gradient(120deg, rgba(192,92,255,0.16), rgba(109,214,255,0.14))",
+            border: "1px solid rgba(192,92,255,0.18)",
+            borderRadius: "24px",
+            boxShadow: "var(--shadow)",
+            padding: 20,
+            color: "rgba(24,24,28,0.92)",
+            backdropFilter: "blur(10px)"
+          }}>
+            <div style={{ fontSize: 28, fontWeight: 750, letterSpacing: "-0.02em" }}>
+              Привет, игра скоро начнётся
+            </div>
+            <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 15, lineHeight: 1.5 }}>
+              Сначала подключи Telegram и нажми Start у бота — это займёт меньше минуты. Потом поле откроется, и можно играть за промокод.
+            </div>
           </div>
-          <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 15, lineHeight: 1.45 }}>
-            Сделай два простых шага в Telegram — и игра откроется. Победа дарит промокод, а бот сразу пришлёт его в личные сообщения.
-          </div>
-        </div>
 
-        <div style={{
-          display: "grid",
-          gap: 16,
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))"
-        }}>
           <div style={{
             background: "var(--card)",
             border: "1px solid var(--cardBorder)",
-            borderRadius: "var(--radius)",
+            borderRadius: "22px",
             boxShadow: "var(--shadow)",
             padding: 18,
-            backdropFilter: "blur(10px)"
+            display: "grid",
+            gap: 12,
+            backdropFilter: "blur(10px)",
+            animation: "lift 320ms ease"
           }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
               <div>
-                <div style={{ fontSize: 20, fontWeight: 750 }}>1. Подключи Telegram</div>
+                <div style={{ fontSize: 20, fontWeight: 750 }}>Два шага — и начнём</div>
                 <div style={{ color: "var(--muted)", marginTop: 6 }}>
-                  Нужно всего 2 шага, чтобы бот знал, куда отправить подарок.
+                  Бот узнает твой чат и сможет прислать подарок. Всё просто.
                 </div>
               </div>
-              <div style={{ padding: "8px 12px", borderRadius: 999, background: "rgba(192,92,255,0.12)", color: "rgba(99,63,143,0.9)", fontWeight: 700, fontSize: 12 }}>
-                обязательно перед игрой
+              <div style={{ padding: "8px 12px", borderRadius: 999, background: "rgba(192,92,255,0.14)", color: "rgba(99,63,143,0.9)", fontWeight: 700, fontSize: 12 }}>
+                перед игрой
               </div>
             </div>
 
-            <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+            <div style={{ display: "grid", gap: 12 }}>
               <div style={{
                 padding: 12,
                 borderRadius: 18,
                 border: "1px solid rgba(27,27,31,0.10)",
-                background: "rgba(255,255,255,0.65)"
+                background: "rgba(255,255,255,0.7)",
+                boxShadow: "var(--shadow2)",
+                animation: tgConnectedHint ? "pulse 820ms ease" : "fadeIn 260ms ease"
               }}>
                 <div style={{ fontWeight: 700 }}>
                   {tgConnectedHint ? "✅ Шаг 1: Telegram подключён" : "Шаг 1: войти через Telegram"}
                 </div>
                 <div style={{ color: "var(--muted)", marginTop: 6, lineHeight: 1.35 }}>
-                  Нажми кнопку ниже, подтвердить вход — и всё. Это занимает пару секунд.
+                  Нажми кнопку ниже, подтверди вход — и всё. Пара секунд.
                 </div>
                 <div id="tg-widget-mount" style={{ marginTop: 10 }} />
               </div>
@@ -319,13 +321,15 @@ export default function Page() {
                 padding: 12,
                 borderRadius: 18,
                 border: "1px solid rgba(27,27,31,0.10)",
-                background: "rgba(255,255,255,0.65)"
+                background: "rgba(255,255,255,0.7)",
+                boxShadow: "var(--shadow2)",
+                animation: botStartedHint ? "pulse 820ms ease" : "fadeIn 260ms ease"
               }}>
                 <div style={{ fontWeight: 700 }}>
-                  {botStartedHint ? "✅ Шаг 2: Нажатие Start в боте" : "Шаг 2: нажми Start у бота"}
+                  {botStartedHint ? "✅ Шаг 2: Start у бота нажат" : "Шаг 2: нажми Start у бота"}
                 </div>
                 <div style={{ color: "var(--muted)", marginTop: 6, lineHeight: 1.35 }}>
-                  Telegram не даёт боту писать первой. Сделай Start — и бот сможет прислать твой результат.
+                  Telegram не даёт боту писать первой. Start — и он принесёт твой результат.
                 </div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
                   <a
@@ -337,7 +341,7 @@ export default function Page() {
                       padding: "10px 12px",
                       borderRadius: 14,
                       border: "1px solid rgba(192,92,255,0.28)",
-                      background: "linear-gradient(90deg, rgba(192,92,255,0.16), rgba(109,214,255,0.14))",
+                      background: "linear-gradient(90deg, rgba(192,92,255,0.18), rgba(109,214,255,0.16))",
                       boxShadow: "var(--shadow2)",
                       fontWeight: 700
                     }}
@@ -351,7 +355,7 @@ export default function Page() {
                       padding: "10px 12px",
                       borderRadius: 14,
                       border: "1px solid rgba(27,27,31,0.12)",
-                      background: "rgba(255,255,255,0.75)",
+                      background: "rgba(255,255,255,0.82)",
                       boxShadow: "var(--shadow2)",
                       cursor: "pointer"
                     }}
@@ -360,22 +364,44 @@ export default function Page() {
                   </button>
                 </div>
               </div>
+            </div>
 
-              <div style={{
-                padding: 12,
-                borderRadius: 18,
-                border: "1px solid rgba(27,27,31,0.10)",
-                background: connectStepsOk
-                  ? "linear-gradient(180deg, rgba(43,182,115,0.12), rgba(255,255,255,0.65))"
-                  : "rgba(255,255,255,0.65)"
-              }}>
-                <div style={{ fontWeight: 750 }}>
-                  {connectStepsOk ? "Шаги сделаны! Игра доступна ниже." : "Сделай оба шага — и игра откроется ниже."}
-                </div>
-                <div style={{ color: "var(--muted)", marginTop: 6 }}>
-                  Победа подарит промокод, а бот пришлёт его в твою переписку.
-                </div>
+            <div style={{
+              padding: 12,
+              borderRadius: 18,
+              border: "1px solid rgba(27,27,31,0.10)",
+              background: connectStepsOk
+                ? "linear-gradient(180deg, rgba(43,182,115,0.14), rgba(255,255,255,0.72))"
+                : "rgba(255,255,255,0.72)",
+              boxShadow: "var(--shadow2)"
+            }}>
+              <div style={{ fontWeight: 750 }}>
+                {connectStepsOk ? "Готово! Поле открывается ❤️" : "Сделай два шага — и поле откроется ❤️"}
               </div>
+              <div style={{ color: "var(--muted)", marginTop: 6 }}>
+                Победа подарит промокод, бот шепнёт его тебе в Telegram.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showGame && (
+        <div style={{ width: "min(980px, 100%)", display: "grid", gap: 16, animation: "fadeSlide 320ms ease" }}>
+          <div style={{
+            background: "linear-gradient(120deg, rgba(192,92,255,0.16), rgba(109,214,255,0.12))",
+            border: "1px solid rgba(192,92,255,0.18)",
+            borderRadius: "24px",
+            boxShadow: "var(--shadow)",
+            padding: 20,
+            color: "rgba(24,24,28,0.92)",
+            backdropFilter: "blur(10px)"
+          }}>
+            <div style={{ fontSize: 28, fontWeight: 750, letterSpacing: "-0.02em" }}>
+              Крестики-нолики с подарком для тебя
+            </div>
+            <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 15, lineHeight: 1.45 }}>
+              Уже можно играть! Победа дарит промокод, а бот сразу шлёт его в Telegram.
             </div>
           </div>
 
@@ -386,29 +412,8 @@ export default function Page() {
             boxShadow: "var(--shadow)",
             padding: 18,
             backdropFilter: "blur(10px)",
-            position: "relative",
-            overflow: "hidden"
+            animation: "lift 320ms ease"
           }}>
-            {!connectStepsOk && (
-              <div style={{
-                position: "absolute",
-                inset: 0,
-                background: "linear-gradient(180deg, rgba(255,255,255,0.78), rgba(247,245,255,0.92))",
-                display: "grid",
-                placeItems: "center",
-                textAlign: "center",
-                padding: 18,
-                zIndex: 5
-              }}>
-                <div style={{ maxWidth: 360 }}>
-                  <div style={{ fontWeight: 750, fontSize: 18 }}>Сначала Telegram, потом игра</div>
-                  <div style={{ color: "var(--muted)", marginTop: 8, lineHeight: 1.4 }}>
-                    Пройди два шага слева: вход и Start. Как только оба кружочка станут зелёными, поле откроется и можно играть.
-                  </div>
-                </div>
-              </div>
-            )}
-
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
               <div>
                 <div style={{ fontSize: 26, fontWeight: 720, letterSpacing: "-0.02em" }}>
@@ -438,21 +443,20 @@ export default function Page() {
               marginTop: 14,
               display: "grid",
               gridTemplateColumns: "1fr",
-              gap: 12,
-              opacity: connectStepsOk ? 1 : 0.45,
-              transition: "opacity 200ms ease"
+              gap: 12
             }}>
               <div style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
                 padding: 14,
                 borderRadius: 18,
                 background: "rgba(255,255,255,0.65)",
-                border: "1px solid rgba(27,27,31,0.10)"
+                border: "1px solid rgba(27,27,31,0.10)",
+                animation: "fadeIn 220ms ease"
               }}>
                 <div>
                   <div style={{ fontWeight: 650 }}>{status}</div>
                   <div style={{ color: "var(--muted)", marginTop: 4 }}>
-                    {connectStepsOk ? "Ходим по очереди. Компьютер думает сразу после твоего шага." : "Сделай два шага слева, чтобы начать игру."}
+                    Ходим по очереди: ты — потом компьютер. Всё честно.
                   </div>
                 </div>
 
@@ -503,7 +507,8 @@ export default function Page() {
                         transition: "transform 120ms ease, filter 120ms ease",
                         filter: busy ? "saturate(0.95)" : "none",
                         position: "relative",
-                        overflow: "hidden"
+                        overflow: "hidden",
+                        animation: "popSoft 180ms ease"
                       }}
                       onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.transform = "translateY(-2px)"; }}
                       onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0px)"; }}
@@ -558,12 +563,13 @@ export default function Page() {
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  gap: 12
+                  gap: 12,
+                  animation: "fadeIn 220ms ease"
                 }}>
                   <div style={{ color: "var(--muted)" }}>
-                    {result === "win" && "Промокод на экране и в Telegram. Пользуйся с удовольствием!"}
-                    {result === "lose" && "Бот пришлёт сообщение о результате. Можно попробовать снова."}
-                    {result === "draw" && "Ничья — иногда это про выдержку. Попробуем ещё раз?"}
+                    {result === "win" && "Моя хорошая, промокод на экране и уже летит в Telegram. Пользуйся с удовольствием!"}
+                    {result === "lose" && "Сегодня не повезло, но бот уже написал в Telegram. Сыграем ещё?"}
+                    {result === "draw" && "Ничья — стильный результат. Давай ещё разок?"}
                   </div>
                   <button
                     onClick={resetGame}
@@ -583,7 +589,7 @@ export default function Page() {
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {toast && (
         <div style={{
@@ -604,6 +610,10 @@ export default function Page() {
       )}
 
       <style jsx>{`
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform: translateY(0);} }
+        @keyframes fadeSlide { from { opacity: 0; transform: translateY(10px);} to { opacity: 1; transform: translateY(0);} }
+        @keyframes lift { from { opacity: 0; transform: translateY(12px) scale(0.98);} to { opacity: 1; transform: translateY(0) scale(1);} }
+        @keyframes popSoft { from { transform: scale(0.98);} to { transform: scale(1);} }
         @media (max-width: 820px) {
           button[aria-label^="cell-"] {
             height: 96px !important;
