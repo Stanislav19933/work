@@ -74,6 +74,7 @@ export default function Page() {
   const [toast, setToast] = useState(null);
   const [confettiRun, setConfettiRun] = useState(false);
   const audioCtxRef = useRef(null);
+  const ambientRef = useRef({ started: false, timer: null });
 
   const mounted = useRef(false);
 
@@ -112,22 +113,43 @@ export default function Page() {
 
   const r = useMemo(() => checkWinner(board), [board]);
 
-  function playTone(freq = 480, duration = 0.12, volume = 0.08) {
+  function getAudioCtx() {
     try {
       const ctx = audioCtxRef.current || new (window.AudioContext || window.webkitAudioContext)();
       audioCtxRef.current = ctx;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      gain.gain.value = volume;
-      osc.connect(gain).connect(ctx.destination);
-      const now = ctx.currentTime;
-      osc.start(now);
-      osc.stop(now + duration);
+      return ctx;
     } catch {
-      // Без звука, если браузер не разрешил.
+      return null;
     }
+  }
+
+  function playTone(freq = 520, duration = 0.10, volume = 0.04, type = "sine") {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.value = volume;
+    osc.connect(gain).connect(ctx.destination);
+    const now = ctx.currentTime;
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+
+  function startAmbient() {
+    if (ambientRef.current.started) return;
+    ambientRef.current.started = true;
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const playChord = () => {
+      const base = 392; // G4
+      [0, 4, 7].forEach((step, idx) => {
+        playTone(base * Math.pow(2, step / 12), 0.6, 0.03 - idx * 0.004, "sine");
+      });
+    };
+    playChord();
+    ambientRef.current.timer = setInterval(playChord, 6400);
   }
 
   useEffect(() => {
@@ -137,8 +159,8 @@ export default function Page() {
       setResult("win");
       setStatus("Победа! 💎");
       setWinLine(r.line);
-      playTone(620, 0.16, 0.09);
-      playTone(740, 0.18, 0.08);
+      playTone(640, 0.18, 0.06);
+      playTone(820, 0.22, 0.05);
       handleWinOnce();
       return;
     }
@@ -146,7 +168,8 @@ export default function Page() {
       setResult("lose");
       setStatus("Упс… давай ещё раз?");
       setWinLine(r.line);
-      playTone(320, 0.18, 0.08);
+      playTone(310, 0.18, 0.05);
+      playTone(260, 0.14, 0.045);
       handleLoseOnce();
       return;
     }
@@ -154,7 +177,7 @@ export default function Page() {
       setResult("draw");
       setStatus("Ничья. Хочешь реванш?");
       setWinLine(null);
-      playTone(520, 0.12, 0.07);
+      playTone(520, 0.12, 0.05);
       return;
     }
 
@@ -243,7 +266,8 @@ export default function Page() {
       return next;
     });
     if (!moved) return;
-    playTone(560, 0.08, 0.07);
+    startAmbient();
+    playTone(540, 0.08, 0.04);
     setBusy(true);
     setTurn(CPU);
   }
