@@ -77,9 +77,13 @@ export default function Page() {
   const mounted = useRef(false);
 
   useEffect(() => {
-    // Флаг «нажал Start» — чисто для UX
-    const started = localStorage.getItem("bot_started") === "1";
-    setBotStartedHint(started);
+    // Флаг «нажал Start» — чисто для UX, с защитой на случай запрета localStorage
+    try {
+      const started = localStorage.getItem("bot_started") === "1";
+      setBotStartedHint(started);
+    } catch {
+      setBotStartedHint(false);
+    }
 
     mounted.current = true;
     return () => { mounted.current = false; };
@@ -215,7 +219,11 @@ export default function Page() {
   }
 
   function markBotStarted() {
-    localStorage.setItem("bot_started", "1");
+    try {
+      localStorage.setItem("bot_started", "1");
+    } catch {
+      // игнорируем, это только подсказка состояния
+    }
     setBotStartedHint(true);
     // Здесь “быстрый юмор”: бот не читает мысли, зато читает /start.
     setToast("Открываем бота. Нажми Start — и вернись играть 💜");
@@ -234,15 +242,16 @@ export default function Page() {
             border: "1px solid rgba(192,92,255,0.18)",
             borderRadius: "24px",
             boxShadow: "var(--shadow)",
-            padding: 20,
+            padding: 18,
             color: "rgba(24,24,28,0.92)",
-            backdropFilter: "blur(10px)"
+            backdropFilter: "blur(10px)",
+            textAlign: "center"
           }}>
-            <div style={{ fontSize: 28, fontWeight: 750, letterSpacing: "-0.02em" }}>
-              Привет! Давай подключим Telegram
+            <div style={{ fontSize: 26, fontWeight: 750, letterSpacing: "-0.02em" }}>
+              Открой бота и нажми Start
             </div>
-            <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 15, lineHeight: 1.5 }}>
-              Открой бота, нажми Start — и поле с игрой сразу появится. Это один шаг и меньше минуты.
+            <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 14.5, lineHeight: 1.45 }}>
+              Один шаг, меньше минуты — потом сразу игра и промокод.
             </div>
           </div>
 
@@ -258,14 +267,9 @@ export default function Page() {
             animation: "lift 280ms ease"
           }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 750 }}>Один шаг — и игра твоя</div>
-                <div style={{ color: "var(--muted)", marginTop: 6 }}>
-                  Бот узнает твой чат и сможет отправить подарок после игры.
-                </div>
-              </div>
+              <div style={{ fontSize: 20, fontWeight: 750 }}>Это нужно, чтобы бот написал тебе</div>
               <div style={{ padding: "8px 12px", borderRadius: 999, background: "rgba(192,92,255,0.14)", color: "rgba(99,63,143,0.9)", fontWeight: 700, fontSize: 12 }}>
-                обязательно перед стартом
+                1 шаг
               </div>
             </div>
 
@@ -281,7 +285,7 @@ export default function Page() {
                 {botStartedHint ? "✅ Бот открыт и Start нажат" : "Открой бота и нажми Start"}
               </div>
               <div style={{ color: "var(--muted)", marginTop: 6, lineHeight: 1.4 }}>
-                Нажми кнопку ниже, перейдёшь в Telegram. Там жми Start — и возвращайся, поле будет ждать тебя.
+                Жми кнопку, открой бота, нажми Start и возвращайся сюда — поле уже готово.
               </div>
               <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <a
