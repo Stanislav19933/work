@@ -500,6 +500,24 @@ export default function Page() {
                   </div>
                 </div>
 
+                <a
+                  href={`https://t.me/${BOT_USERNAME}?start=play`}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={markBotStarted}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(192,92,255,0.28)",
+                    background: "linear-gradient(90deg, rgba(192,92,255,0.16), rgba(109,214,255,0.14))",
+                    boxShadow: "var(--shadow2)",
+                    fontWeight: 700
+                  }}
+                  title="Если бот не ответил — открой и нажми Start ещё раз"
+                >
+                  Открыть бота заново
+                </a>
+
                 {promo && (
                   <button
                     onClick={copyPromo}
