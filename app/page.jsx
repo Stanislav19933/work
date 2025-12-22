@@ -73,6 +73,7 @@ export default function Page() {
   const [promo, setPromo] = useState(null);
   const [toast, setToast] = useState(null);
   const [confettiRun, setConfettiRun] = useState(false);
+  const audioCtxRef = useRef(null);
 
   const mounted = useRef(false);
 
@@ -111,6 +112,24 @@ export default function Page() {
 
   const r = useMemo(() => checkWinner(board), [board]);
 
+  function playTone(freq = 480, duration = 0.12, volume = 0.08) {
+    try {
+      const ctx = audioCtxRef.current || new (window.AudioContext || window.webkitAudioContext)();
+      audioCtxRef.current = ctx;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.value = volume;
+      osc.connect(gain).connect(ctx.destination);
+      const now = ctx.currentTime;
+      osc.start(now);
+      osc.stop(now + duration);
+    } catch {
+      // Без звука, если браузер не разрешил.
+    }
+  }
+
   useEffect(() => {
     if (!mounted.current) return;
 
@@ -118,6 +137,8 @@ export default function Page() {
       setResult("win");
       setStatus("Победа! 💎");
       setWinLine(r.line);
+      playTone(620, 0.16, 0.09);
+      playTone(740, 0.18, 0.08);
       handleWinOnce();
       return;
     }
@@ -125,6 +146,7 @@ export default function Page() {
       setResult("lose");
       setStatus("Упс… давай ещё раз?");
       setWinLine(r.line);
+      playTone(320, 0.18, 0.08);
       handleLoseOnce();
       return;
     }
@@ -132,6 +154,7 @@ export default function Page() {
       setResult("draw");
       setStatus("Ничья. Хочешь реванш?");
       setWinLine(null);
+      playTone(520, 0.12, 0.07);
       return;
     }
 
@@ -211,13 +234,17 @@ export default function Page() {
     if (busy) return;
     if (result) return;
     if (turn !== HUMAN) return;
-    setBusy(true);
+    let moved = false;
     setBoard(prev => {
       if (prev[i] !== EMPTY) return prev;
+      moved = true;
       const next = prev.slice();
       next[i] = HUMAN;
       return next;
     });
+    if (!moved) return;
+    playTone(560, 0.08, 0.07);
+    setBusy(true);
     setTurn(CPU);
   }
 
@@ -352,13 +379,19 @@ export default function Page() {
             boxShadow: "var(--shadow)",
             padding: 20,
             color: "rgba(24,24,28,0.92)",
-            backdropFilter: "blur(10px)"
+            backdropFilter: "blur(10px)",
+            position: "relative",
+            overflow: "hidden"
           }}>
-            <div style={{ fontSize: 28, fontWeight: 750, letterSpacing: "-0.02em" }}>
-              Крестики-нолики с подарком для тебя
-            </div>
-            <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 15, lineHeight: 1.45 }}>
-              Уже можно играть! Победа дарит промокод, а бот сразу шлёт его в Telegram.
+            <div style={{ position: "absolute", inset: "-20% 50% auto -20%", height: 160, background: "radial-gradient(circle, rgba(255,255,255,0.35), transparent 45%)", filter: "blur(30px)", opacity: 0.8 }} />
+            <div style={{ position: "absolute", inset: "auto -20% -40% 20%", height: 200, background: "radial-gradient(circle, rgba(192,92,255,0.22), transparent 55%)", filter: "blur(32px)", opacity: 0.8 }} />
+            <div style={{ position: "relative" }}>
+              <div style={{ fontSize: 28, fontWeight: 750, letterSpacing: "-0.02em" }}>
+                Крестики-нолики с подарком для тебя
+              </div>
+              <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 15, lineHeight: 1.45 }}>
+                Уже можно играть! Победа дарит промокод, а бот сразу шлёт его в Telegram.
+              </div>
             </div>
           </div>
 
@@ -442,7 +475,9 @@ export default function Page() {
                 padding: 12,
                 borderRadius: 22,
                 background: "rgba(255,255,255,0.65)",
-                border: "1px solid rgba(27,27,31,0.10)"
+                border: "1px solid rgba(27,27,31,0.10)",
+                boxShadow: "0 12px 30px rgba(139,92,246,0.12)",
+                animation: "pulseBg 1600ms ease-in-out infinite alternate"
               }}>
                 {board.map((v, i) => {
                   const isWin = winLine?.includes(i);
@@ -571,6 +606,7 @@ export default function Page() {
         @keyframes fadeSlide { from { opacity: 0; transform: translateY(10px);} to { opacity: 1; transform: translateY(0);} }
         @keyframes lift { from { opacity: 0; transform: translateY(12px) scale(0.98);} to { opacity: 1; transform: translateY(0) scale(1);} }
         @keyframes popSoft { from { transform: scale(0.98);} to { transform: scale(1);} }
+        @keyframes pulseBg { from { box-shadow: 0 12px 30px rgba(139,92,246,0.10);} to { box-shadow: 0 16px 36px rgba(79,70,229,0.18);} }
         @media (max-width: 820px) {
           button[aria-label^="cell-"] {
             height: 96px !important;
