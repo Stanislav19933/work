@@ -243,7 +243,8 @@ export default function Page() {
     setToast("Открываем бота. Нажми Start — и вернись играть 💜");
   }
 
-  const showGame = botStartedHint;
+  const connectStepsOk = botStartedHint;
+  const showGame = connectStepsOk;
 
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 18, background: "radial-gradient(circle at 10% 10%, rgba(255,227,255,0.28), transparent 32%), radial-gradient(circle at 80% 20%, rgba(214,245,255,0.32), transparent 32%), #f7f5ff" }}>
