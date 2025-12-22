@@ -451,7 +451,7 @@ export default function Page() {
         }}>
           <div style={{ fontSize: 18, fontWeight: 750 }}>Подключение Telegram</div>
           <div style={{ color: "var(--muted)", marginTop: 8, lineHeight: 1.35 }}>
-            Чтобы результат пришёл <b>тебе</b>, бот должен знать твой chat_id и иметь право написать.
+            Чтобы получить результат в Telegram, нужно войти через него и разрешить боту писать.
             Это 2 шага и занимает ~10 секунд.
           </div>
 
@@ -466,7 +466,7 @@ export default function Page() {
                 {tgConnectedHint ? "✅ Шаг 1: Telegram подключён" : "Шаг 1: Войти через Telegram"}
               </div>
               <div style={{ color: "var(--muted)", marginTop: 6 }}>
-                Нажми кнопку ниже. Если не работает — проверь, что домен добавлен в BotFather через /setdomain.
+                Нажми кнопку ниже, появится мини-окно авторизации. Подтверди вход — и готово.
               </div>
               <div id="tg-widget-mount" style={{ marginTop: 10 }} />
             </div>
@@ -533,7 +533,7 @@ export default function Page() {
             </div>
 
             <div style={{ color: "var(--muted)", fontSize: 12 }}>
-              Примечание: “Сброс шага 2” нужен только для теста. Бот не читает мысли, зато читает /start.
+              Если бот не пишет, нажми «Сброс шага 2» и сделай Start ещё раз. Бот не читает мысли, зато читает /start.
             </div>
           </div>
         </div>
