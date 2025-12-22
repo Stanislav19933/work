@@ -60,7 +60,7 @@ function Confetti({ run }) {
 }
 
 export default function Page() {
-  const [tgConnectedHint, setTgConnectedHint] = useState(false);
+  const [botOpenedHint, setBotOpenedHint] = useState(false);
   const [botStartedHint, setBotStartedHint] = useState(false);
 
   const [board, setBoard] = useState(Array(9).fill(EMPTY));
@@ -79,36 +79,11 @@ export default function Page() {
 
   // Telegram Login Widget: вставляется скриптом
   useEffect(() => {
-    // Подсказки статуса из URL-параметров
-    const url = new URL(window.location.href);
-    const tg = url.searchParams.get("tg");
-    if (tg === "ok") setTgConnectedHint(true);
-    if (tg === "fail") setToast("Не удалось подключить Telegram. Попробуй ещё раз.");
-
-    // Уберём хвост ?tg=... чтобы выглядело аккуратно
-    if (tg) {
-      url.searchParams.delete("tg");
-      window.history.replaceState({}, "", url.toString());
-    }
-
-    // Флаг "нажимал открыть бота" — чисто для UX
+    // Флаги открывал/нажимал Start — чисто для UX
+    const opened = localStorage.getItem("bot_opened") === "1";
     const started = localStorage.getItem("bot_started") === "1";
+    setBotOpenedHint(opened);
     setBotStartedHint(started);
-
-    // Подключим виджет только на клиенте
-    const script = document.createElement("script");
-    script.async = true;
-    script.src = "https://telegram.org/js/telegram-widget.js?22";
-    script.setAttribute("data-telegram-login", BOT_USERNAME);
-    script.setAttribute("data-size", "large");
-    script.setAttribute("data-radius", "14");
-    script.setAttribute("data-userpic", "false");
-    script.setAttribute("data-request-access", "write");
-    script.setAttribute("data-auth-url", "/api/telegram/auth");
-    script.setAttribute("data-lang", "ru");
-
-    const mount = document.getElementById("tg-widget-mount");
-    mount?.appendChild(script);
 
     mounted.current = true;
     return () => { mounted.current = false; };
@@ -250,7 +225,13 @@ export default function Page() {
     setToast("Отлично. Теперь бот не стесняется писать первым 🙂");
   }
 
-  const connectStepsOk = tgConnectedHint && botStartedHint;
+  function markBotOpened() {
+    localStorage.setItem("bot_opened", "1");
+    setBotOpenedHint(true);
+    setToast("Открываем бота в Telegram ❤️");
+  }
+
+  const connectStepsOk = botOpenedHint && botStartedHint;
   const showGame = connectStepsOk;
 
   return (
@@ -306,15 +287,32 @@ export default function Page() {
                 border: "1px solid rgba(27,27,31,0.10)",
                 background: "rgba(255,255,255,0.7)",
                 boxShadow: "var(--shadow2)",
-                animation: tgConnectedHint ? "pulse 820ms ease" : "fadeIn 260ms ease"
+                animation: botOpenedHint ? "pulse 820ms ease" : "fadeIn 260ms ease"
               }}>
                 <div style={{ fontWeight: 700 }}>
-                  {tgConnectedHint ? "✅ Шаг 1: Telegram подключён" : "Шаг 1: войти через Telegram"}
+                  {botOpenedHint ? "✅ Шаг 1: Открыли бота" : "Шаг 1: открыть бота"}
                 </div>
                 <div style={{ color: "var(--muted)", marginTop: 6, lineHeight: 1.35 }}>
-                  Нажми кнопку ниже, подтверди вход — и всё. Пара секунд.
+                  Открой бота в Telegram — это мгновенно.
                 </div>
-                <div id="tg-widget-mount" style={{ marginTop: 10 }} />
+                <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <a
+                    href={`https://t.me/${BOT_USERNAME}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={markBotOpened}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(192,92,255,0.28)",
+                      background: "linear-gradient(90deg, rgba(192,92,255,0.18), rgba(109,214,255,0.16))",
+                      boxShadow: "var(--shadow2)",
+                      fontWeight: 700
+                    }}
+                  >
+                    Открыть бота
+                  </a>
+                </div>
               </div>
 
               <div style={{
