@@ -75,6 +75,7 @@ export default function Page() {
   const [confettiRun, setConfettiRun] = useState(false);
   const audioCtxRef = useRef(null);
   const ambientRef = useRef({ started: false, timer: null });
+  const cpuTimerRef = useRef(null);
 
   const mounted = useRef(false);
 
@@ -155,6 +156,7 @@ export default function Page() {
   useEffect(() => {
     if (!mounted.current) return;
 
+    // победы/ничьи
     if (r.winner === HUMAN) {
       setResult("win");
       setStatus("Победа! 💎");
@@ -181,26 +183,40 @@ export default function Page() {
       return;
     }
 
-    // если игра не закончена — управление ходом
-    if (turn === CPU) {
-      if (!busy) setBusy(true);
-      setStatus("Компьютер думает…");
-      const t = setTimeout(() => {
-        setBoard(prev => {
-          const idx = cpuMove(prev, 0.08);
-          if (idx == null || prev[idx] !== EMPTY) return prev;
-          const next = prev.slice();
-          next[idx] = CPU;
-          return next;
-        });
-        setTurn(HUMAN);
-        setBusy(false);
-        setStatus("Твой ход ✨");
-      }, 420);
-      return () => clearTimeout(t);
+    // ход компьютера
+    if (cpuTimerRef.current) {
+      clearTimeout(cpuTimerRef.current);
+      cpuTimerRef.current = null;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [r.winner, turn]);
+    if (!connectStepsOk) return;
+    if (turn !== CPU) return;
+
+    setBusy(true);
+    setStatus("Компьютер думает…");
+    cpuTimerRef.current = setTimeout(() => {
+      setBoard(prev => {
+        // если пока думали кто-то победил — не ходим
+        const res = checkWinner(prev);
+        if (res.winner) return prev;
+        const idx = cpuMove(prev, 0.08);
+        if (idx == null || prev[idx] !== EMPTY) return prev;
+        const next = prev.slice();
+        next[idx] = CPU;
+        return next;
+      });
+      setTurn(HUMAN);
+      setBusy(false);
+      setStatus("Твой ход ✨");
+      cpuTimerRef.current = null;
+    }, 420);
+
+    return () => {
+      if (cpuTimerRef.current) {
+        clearTimeout(cpuTimerRef.current);
+        cpuTimerRef.current = null;
+      }
+    };
+  }, [r.winner, turn, connectStepsOk]);
 
   const outcomeSentRef = useRef({ win: false, lose: false });
 
