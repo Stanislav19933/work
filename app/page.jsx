@@ -165,7 +165,6 @@ export default function Page() {
   useEffect(() => {
     if (!mounted.current) return;
 
-    // победы/ничьи
     if (r.winner === HUMAN) {
       setResult("win");
       setStatus("Победа! 💎");
@@ -191,30 +190,38 @@ export default function Page() {
       playTone(520, 0.12, 0.05);
       return;
     }
+  }, [r.winner, r.line]);
 
-    // ход компьютера
+  useEffect(() => {
+    if (!mounted.current) return;
+    if (!showGame) return;
+    if (result) return;
+
     if (cpuTimerRef.current) {
       clearTimeout(cpuTimerRef.current);
       cpuTimerRef.current = null;
     }
-    if (turn !== CPU) return;
 
-    setBusy(true);
-    setStatus("Компьютер думает…");
-    const timer = setTimeout(() => {
-      setBoard(prev => {
-        const idx = cpuMove(prev, 0.08);
-        if (idx == null || prev[idx] !== EMPTY) return prev;
-        const next = prev.slice();
-        next[idx] = CPU;
-        return next;
-      });
-      setTurn(HUMAN);
+    if (turn === CPU) {
+      setBusy(true);
+      setStatus("Компьютер думает…");
+      cpuTimerRef.current = setTimeout(() => {
+        setBoard(prev => {
+          const idx = cpuMove(prev, 0.08);
+          if (idx == null || prev[idx] !== EMPTY) return prev;
+          const next = prev.slice();
+          next[idx] = CPU;
+          return next;
+        });
+        setTurn(HUMAN);
+        setBusy(false);
+        setStatus("Твой ход ✨");
+        cpuTimerRef.current = null;
+      }, 420);
+    } else {
       setBusy(false);
       setStatus("Твой ход ✨");
-      cpuTimerRef.current = null;
-    }, 420);
-    cpuTimerRef.current = timer;
+    }
 
     return () => {
       if (cpuTimerRef.current) {
@@ -222,7 +229,7 @@ export default function Page() {
         cpuTimerRef.current = null;
       }
     };
-  }, [r.winner, turn]);
+  }, [turn, result, showGame]);
 
   const outcomeSentRef = useRef({ win: false, lose: false });
 
