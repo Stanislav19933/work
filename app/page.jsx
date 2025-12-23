@@ -109,9 +109,7 @@ export default function Page() {
 
   const r = useMemo(() => checkWinner(board), [board]);
 
-  const hasTgCookie = () => {
-    return typeof document !== "undefined" && document.cookie.includes("tg_uid=");
-  };
+  const hasTgCookie = () => (typeof document !== "undefined" && document.cookie.includes("tg_uid="));
 
   // Показываем всплывашки коротко
   useEffect(() => {
@@ -155,15 +153,22 @@ export default function Page() {
       setBotStarted(false);
     }
 
-    if (hasTgCookie()) {
-      setConnected(true);
-      setStatus("Подключено. Можно играть!");
-    }
-
     initWebApp();
     mounted.current = true;
     return () => { mounted.current = false; };
   }, []);
+
+  // Регулярно проверяем, не появился ли cookie после запуска в Telegram
+  useEffect(() => {
+    if (connected) return;
+    const t = setInterval(() => {
+      if (hasTgCookie()) {
+        setConnected(true);
+        setStatus("Подключено. Можно играть!");
+      }
+    }, 1500);
+    return () => clearInterval(t);
+  }, [connected]);
 
   // Игра: реакции на победу/проигрыш/ничью и ход бота
   useEffect(() => {
@@ -434,18 +439,28 @@ export default function Page() {
 
           <div style={{ display: "grid", gap: 10, padding: 14, borderRadius: 18, border: "1px solid rgba(255,255,255,0.18)", background: "linear-gradient(135deg, rgba(192,92,255,0.18), rgba(109,214,255,0.16))", boxShadow: "0 14px 35px rgba(0,0,0,0.28)" }}>
             <div style={{ fontWeight: 700, color: "#120b1f" }}>Шаг 1. Открыть бота</div>
-            <button
-              onClick={() => {
-                openBotForStart();
-                setToast("Открыл бота. Нажми Start один раз.");
-              }}
-              style={{ padding: "10px 12px", borderRadius: 14, border: "1px solid rgba(192,92,255,0.28)", background: "linear-gradient(90deg, rgba(192,92,255,0.2), rgba(109,214,255,0.18))", color: "#120b1f", fontWeight: 750, cursor: "pointer", boxShadow: "0 10px 30px rgba(0,0,0,0.25)" }}
-            >
-              Открыть бота
-            </button>
-            <div style={{ fontWeight: 700, color: "#120b1f" }}>Шаг 2. Подтверди запуск</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              <button
+                onClick={() => {
+                  openBotForStart();
+                  setToast("Открыл бота. Telegram сам подтвердит подключение.");
+                }}
+                style={{ padding: "10px 12px", borderRadius: 14, border: "1px solid rgba(192,92,255,0.28)", background: "linear-gradient(90deg, rgba(192,92,255,0.2), rgba(109,214,255,0.18))", color: "#120b1f", fontWeight: 750, cursor: "pointer", boxShadow: "0 10px 30px rgba(0,0,0,0.25)" }}
+              >
+                Открыть бота
+              </button>
+              <a
+                href={`https://t.me/${BOT_USERNAME}?startapp=play`}
+                target="_blank"
+                rel="noreferrer"
+                style={{ padding: "10px 12px", borderRadius: 14, border: "1px solid rgba(192,92,255,0.28)", background: "rgba(255,255,255,0.7)", color: "#120b1f", fontWeight: 750, boxShadow: "0 10px 30px rgba(0,0,0,0.18)" }}
+              >
+                Запустить игру в Telegram
+              </a>
+            </div>
+            <div style={{ fontWeight: 700, color: "#120b1f" }}>Шаг 2. Подтверждение</div>
             <div style={{ color: "rgba(15,12,30,0.8)", fontSize: 13 }}>
-              Если кнопка не сработала, открой вручную: <a href={`https://t.me/${BOT_USERNAME}?start=play`} target="_blank" rel="noreferrer" style={{ color: "#120b1f", fontWeight: 760 }}>@{BOT_USERNAME}</a>
+              Если кнопка не сработала, открой вручную: <a href={`https://t.me/${BOT_USERNAME}?start=play`} target="_blank" rel="noreferrer" style={{ color: "#120b1f", fontWeight: 760 }}>@{BOT_USERNAME}</a>. После запуска внутри Telegram статус станет зелёным.
             </div>
             <button
               onClick={() => {
@@ -454,12 +469,16 @@ export default function Page() {
                 } catch { /* ignore */ }
                 setConnected(false);
                 setBotStarted(false);
-                setToast("Сбросили подключение Telegram. Открой бота снова.");
+                setStatus("Нажми на кнопку и подключи Telegram");
+                setToast("Сбросили подключение. Открой бота снова.");
               }}
               style={{ padding: "10px 12px", borderRadius: 14, border: "1px solid rgba(0,0,0,0.18)", background: "rgba(255,255,255,0.6)", color: "#120b1f", cursor: "pointer" }}
             >
               Сбросить подключение
             </button>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.4 }}>
+              После запуска внутри Telegram статус подключения станет зелёным, и бот сможет писать.
+            </div>
           </div>
 
           <div style={{ display: "grid", gap: 10, fontSize: 14, color: "rgba(255,255,255,0.75)" }}>
