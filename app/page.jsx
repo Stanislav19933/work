@@ -102,7 +102,6 @@ export default function Page() {
   const [confettiRun, setConfettiRun] = useState(false);
   const [connected, setConnected] = useState(false);
   const [botStarted, setBotStarted] = useState(false);
-  const [username, setUsername] = useState("");
 
   const mounted = useRef(false);
   const cpuTimer = useRef(null);
@@ -122,21 +121,36 @@ export default function Page() {
     if (cpuTimer.current) clearTimeout(cpuTimer.current);
   }, []);
 
-  // Подключение Telegram без ввода номера: сохраняем @username и открываем бота
+  // Подключение через Telegram WebApp: проверяем initData и сохраняем chat_id на сервере
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("tg_username");
-      if (saved) {
-        setUsername(saved);
+    async function initWebApp() {
+      try {
+        const tg = window.Telegram?.WebApp;
+        if (!tg || !tg.initData) return;
+        const resp = await fetch("/api/telegram/auth", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ initData: tg.initData })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data?.error || "auth_failed");
         setConnected(true);
+        setBotStarted(true); // WebApp запускается после Start
+        setStatus("Подключено. Можно играть!");
+        setToast("Telegram подключён через WebApp.");
+      } catch (e) {
+        setToast("Не удалось подключить через Telegram WebApp. Открой бота и попробуй снова.");
       }
+    }
+
+    try {
       const started = localStorage.getItem("bot_started") === "1";
       setBotStarted(started);
     } catch {
-      setUsername("");
-      setConnected(false);
       setBotStarted(false);
     }
+
+    initWebApp();
     mounted.current = true;
     return () => { mounted.current = false; };
   }, []);
@@ -201,15 +215,10 @@ export default function Page() {
   const outcomeSentRef = useRef({ win: false, lose: false });
 
   async function sendToTelegram(payload) {
-    const target = (username || "").trim();
-    if (!/^@?[a-zA-Z0-9_]{4,}$/.test(target)) {
-      setToast("Добавь свой @username, чтобы бот смог написать.");
-      throw new Error("missing_username");
-    }
     const resp = await fetch("/api/telegram/send", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...payload, username: target })
+      body: JSON.stringify(payload)
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(data?.error || "send_failed");
@@ -301,9 +310,9 @@ export default function Page() {
 
   const connectedText = connected
     ? botStarted
-      ? "Telegram подключён, бот знает тебя"
-      : "Бот открыт в новой вкладке — нажми Start один раз"
-    : "Добавь свой @username и нажми «Открыть бота»";
+      ? "Telegram подключён через WebApp. Бот может писать."
+      : "Открой бота и нажми Start"
+    : "Открой бота через кнопку ниже (WebApp)";
 
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 18, background: "radial-gradient(900px 700px at 20% 10%, rgba(192, 92, 255, 0.18), transparent 60%), radial-gradient(900px 700px at 80% 20%, rgba(109, 214, 255, 0.20), transparent 60%), radial-gradient(900px 700px at 60% 85%, rgba(255, 77, 109, 0.14), transparent 60%), linear-gradient(180deg, #0b1021, #0c1429)" }}>
@@ -408,59 +417,39 @@ export default function Page() {
         </div>
 
         <div style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 22, boxShadow: "0 15px 60px rgba(0,0,0,0.35)", padding: 18, backdropFilter: "blur(12px)", color: "#f2f5ff", display: "grid", gap: 12, alignSelf: "start" }}>
-          <div style={{ fontSize: 18, fontWeight: 760 }}>Подключение без ввода номера</div>
+          <div style={{ fontSize: 18, fontWeight: 760 }}>Подключение через Bot WebApp</div>
           <div style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.5 }}>
-            Просто укажи свой @username, я открою бота и он сможет написать тебе про победу или проигрыш. Никаких кодов по SMS.
+            Открой бота в Telegram и нажми Start. WebApp передаст твой chat_id — никаких номеров и СМС.
           </div>
 
           <div style={{ display: "grid", gap: 10, padding: 14, borderRadius: 18, border: "1px solid rgba(255,255,255,0.18)", background: "linear-gradient(135deg, rgba(192,92,255,0.18), rgba(109,214,255,0.16))", boxShadow: "0 14px 35px rgba(0,0,0,0.28)" }}>
-            <label style={{ fontWeight: 700, color: "#120b1f" }} htmlFor="tg-username">Твой @username в Telegram</label>
-            <input
-              id="tg-username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="@username"
-              style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(0,0,0,0.15)", fontSize: 15 }}
-            />
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                onClick={() => {
-                  const val = (username || "").trim();
-                  if (!/^@?[a-zA-Z0-9_]{4,}$/.test(val)) {
-                    setToast("Введи корректный @username (буквы/цифры/подчёркивание).");
-                    return;
-                  }
-                  try {
-                    localStorage.setItem("tg_username", val.startsWith("@") ? val : `@${val}`);
-                  } catch { /* ignore */ }
-                  setUsername(val.startsWith("@") ? val : `@${val}`);
-                  setConnected(true);
-                  openBotForStart();
-                  setToast("Открыл бота. Нажми Start один раз.");
-                }}
-                style={{ padding: "10px 12px", borderRadius: 14, border: "1px solid rgba(192,92,255,0.28)", background: "linear-gradient(90deg, rgba(192,92,255,0.2), rgba(109,214,255,0.18))", color: "#120b1f", fontWeight: 750, cursor: "pointer", boxShadow: "0 10px 30px rgba(0,0,0,0.25)" }}
-              >
-                Открыть бота
-              </button>
-              <button
-                onClick={() => {
-                  try {
-                    localStorage.removeItem("tg_username");
-                    localStorage.removeItem("bot_started");
-                  } catch { /* ignore */ }
-                  setUsername("");
-                  setConnected(false);
-                  setBotStarted(false);
-                  setToast("Сбросили подключение Telegram.");
-                }}
-                style={{ padding: "10px 12px", borderRadius: 14, border: "1px solid rgba(0,0,0,0.18)", background: "rgba(255,255,255,0.6)", color: "#120b1f", cursor: "pointer" }}
-              >
-                Сбросить
-              </button>
-            </div>
+            <div style={{ fontWeight: 700, color: "#120b1f" }}>Шаг 1. Открыть бота</div>
+            <button
+              onClick={() => {
+                openBotForStart();
+                setToast("Открыл бота. Нажми Start один раз.");
+              }}
+              style={{ padding: "10px 12px", borderRadius: 14, border: "1px solid rgba(192,92,255,0.28)", background: "linear-gradient(90deg, rgba(192,92,255,0.2), rgba(109,214,255,0.18))", color: "#120b1f", fontWeight: 750, cursor: "pointer", boxShadow: "0 10px 30px rgba(0,0,0,0.25)" }}
+            >
+              Открыть бота
+            </button>
+            <div style={{ fontWeight: 700, color: "#120b1f" }}>Шаг 2. Нажми Start</div>
             <div style={{ color: "rgba(15,12,30,0.8)", fontSize: 13 }}>
               Если кнопка не сработала, открой вручную: <a href={`https://t.me/${BOT_USERNAME}?start=play`} target="_blank" rel="noreferrer" style={{ color: "#120b1f", fontWeight: 760 }}>@{BOT_USERNAME}</a>
             </div>
+            <button
+              onClick={() => {
+                try {
+                  localStorage.removeItem("bot_started");
+                } catch { /* ignore */ }
+                setConnected(false);
+                setBotStarted(false);
+                setToast("Сбросили подключение Telegram. Открой бота снова.");
+              }}
+              style={{ padding: "10px 12px", borderRadius: 14, border: "1px solid rgba(0,0,0,0.18)", background: "rgba(255,255,255,0.6)", color: "#120b1f", cursor: "pointer" }}
+            >
+              Сбросить подключение
+            </button>
           </div>
 
           <div style={{ display: "grid", gap: 10, fontSize: 14, color: "rgba(255,255,255,0.75)" }}>

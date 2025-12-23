@@ -14,11 +14,10 @@ export async function POST(req) {
       return NextResponse.json({ error: "Bad payload" }, { status: 400 });
     }
 
-    const username = String(body.username || "").trim();
-    if (!/^@?[a-zA-Z0-9_]{4,}$/i.test(username)) {
-      return NextResponse.json({ error: "Missing or bad username" }, { status: 400 });
+    const tgUid = req.cookies.get("tg_uid")?.value;
+    if (!tgUid) {
+      return NextResponse.json({ error: "Telegram is not connected" }, { status: 400 });
     }
-    const chatId = username.startsWith("@") ? username : `@${username}`;
 
     let text = "Проигрыш";
     if (body.result === "win") {
@@ -34,7 +33,7 @@ export async function POST(req) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        chat_id: chatId,
+        chat_id: tgUid,
         text
       })
     });
