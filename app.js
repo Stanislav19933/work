@@ -3,8 +3,8 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createLinkToken, getLinkByToken, isTokenLinked, linkChatId } from './db.js';
 import { sendMessage } from './telegram.js';
+import { kv } from '@vercel/kv';
 
 dotenv.config();
 
@@ -34,7 +34,7 @@ app.post('/api/link', (req, res) => {
 
   const token = generateToken();
   try {
-    createLinkToken(token);
+    kv.set(`link:${token}`, '', { ex: 60 * 60 * 24 * 7 });
     const botLink = `https://t.me/${BOT_USERNAME}?start=${token}`;
     return res.json({ ok: true, botLink, token });
   } catch (error) {
@@ -48,7 +48,9 @@ app.get('/api/link-status', (req, res) => {
     return res.status(400).json({ ok: false, message: 'Token обязателен' });
   }
 
-  return res.json({ ok: true, linked: isTokenLinked(String(token)) });
+  kv.get(`link:${String(token)}`)
+    .then((value) => res.json({ ok: true, linked: Boolean(value && value.length > 0) }))
+    .catch(() => res.status(500).json({ ok: false, message: 'Не удалось проверить статус' }));
 });
 
 app.post('/api/result', async (req, res) => {
@@ -62,8 +64,14 @@ app.post('/api/result', async (req, res) => {
     return res.json({ ok: true, telegramSent: false });
   }
 
-  const link = getLinkByToken(token);
-  if (!link || !link.chat_id) {
+  let chatId = null;
+  try {
+    chatId = await kv.get(`link:${token}`);
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: 'Не удалось получить данные привязки' });
+  }
+
+  if (!chatId) {
     return res.json({ ok: true, telegramSent: false });
   }
 
@@ -86,56 +94,49 @@ app.post('/api/result', async (req, res) => {
   }
 
   try {
-    await sendMessage(link.chat_id, message);
+    await sendMessage(chatId, message);
     return res.json({ ok: true, telegramSent: true, promoCode: serverPromoCode });
   } catch (error) {
     return res.status(500).json({ ok: false, message: 'Не удалось отправить сообщение в Telegram' });
   }
 });
 
-app.post('/api/telegram-webhook', async (req, res) => {
-  const update = req.body;
-  const message = update.message;
-
-  if (!message || !message.text || !message.chat) {
-    return res.json({ ok: true });
+app.all('/api/telegram-webhook', async (req, res) => {
+  if (req.method !== 'POST') {
+    return res.status(200).send('OK');
   }
 
-  if (!message.text.startsWith('/start')) {
-    return res.json({ ok: true });
-  }
-
-  const parts = message.text.split(' ');
-  const token = parts[1];
-  if (!token) {
-    return res.json({ ok: true });
-  }
-
-  const link = getLinkByToken(token);
-  if (!link) {
-    return res.json({ ok: true });
-  }
-
-  if (!link.chat_id) {
-    linkChatId(token, message.chat.id);
-  }
-
-  const url = `${SITE_URL}/?token=${token}`;
   try {
+    const update = req.body;
+    const message = update.message;
+
+    if (!message || !message.text || !message.chat) {
+      return res.json({ ok: true });
+    }
+
+    if (!message.text.startsWith('/start')) {
+      return res.json({ ok: true });
+    }
+
+    const parts = message.text.split(' ');
+    const token = parts[1];
+    if (!token) {
+      return res.json({ ok: true });
+    }
+
+    await kv.set(`link:${token}`, String(message.chat.id), { ex: 60 * 60 * 24 * 7 });
+
+    const url = `${SITE_URL}/?token=${token}`;
     await sendMessage(message.chat.id, 'Готово! Возвращайся на сайт.', {
       reply_markup: {
         inline_keyboard: [[{ text: 'Открыть игру', url }]]
       }
     });
   } catch (error) {
-    return res.status(500).json({ ok: false });
+    return res.status(200).json({ ok: true });
   }
 
   return res.json({ ok: true });
-});
-
-app.get('/api/telegram-webhook', (req, res) => {
-  res.status(405).send('Method Not Allowed');
 });
 
 app.get(/^(?!\/api).*/, (req, res) => {
