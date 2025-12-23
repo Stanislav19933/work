@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Крестики-нолики — нежная версия</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <p class="eyebrow">Небольшая игра для расслабления</p>
+        <h1>Крестики-нолики</h1>
+        <p class="subtitle">
+          Тёплый мини-матч: ты ходишь первой, а я аккуратно отвечаю.
+        </p>
+      </header>
+
+      <section class="status">
+        <div class="status-card">
+          <h2>Telegram-статус</h2>
+          <p id="telegramStatus" class="status-text">Telegram пока не привязан.</p>
+          <button id="linkTelegram" class="primary">
+            Привязать Telegram, чтобы получать результат в чате
+          </button>
+          <p id="linkHint" class="hint"></p>
+          <button id="checkLink" class="ghost hidden">Проверить статус</button>
+        </div>
+        <div class="status-card sound">
+          <h2>Звук</h2>
+          <label class="toggle">
+            <input id="soundToggle" type="checkbox" checked />
+            <span>Звук: <strong id="soundLabel">Вкл</strong></span>
+          </label>
+        </div>
+      </section>
+
+      <section class="board-section">
+        <div class="board" id="board" aria-label="Игровое поле"></div>
+        <div class="result" id="resultPanel" aria-live="polite">
+          <div class="result-card">
+            <h2 id="resultTitle">Победа!</h2>
+            <p id="resultMessage"></p>
+            <p id="promo" class="promo"></p>
+            <div class="actions">
+              <button id="playAgain" class="primary">Сыграть ещё</button>
+              <button id="resetAll" class="ghost">Сброс</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <p>
+          Нужен лёгкий перерыв? Сделай ход и получи приятное сообщение.
+        </p>
+      </footer>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

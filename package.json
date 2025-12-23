@@ -1,0 +1,15 @@
+{
+  "name": "tic-tac-telegram",
+  "version": "1.0.0",
+  "description": "Demo tic-tac-toe with optional Telegram linking",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}
