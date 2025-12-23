@@ -92,8 +92,12 @@ export default function Page() {
     }
 
     // Флаг "нажимал открыть бота" — чисто для UX
-    const started = localStorage.getItem("bot_started") === "1";
-    setBotStartedHint(started);
+    try {
+      const started = localStorage.getItem("bot_started") === "1";
+      setBotStartedHint(started);
+    } catch {
+      setBotStartedHint(false);
+    }
 
     // Подключим виджет только на клиенте
     const script = document.createElement("script");
@@ -122,6 +126,12 @@ export default function Page() {
 
   const r = useMemo(() => checkWinner(board), [board]);
 
+  const cpuTimer = useRef(null);
+
+  useEffect(() => () => {
+    if (cpuTimer.current) clearTimeout(cpuTimer.current);
+  }, []);
+
   useEffect(() => {
     if (!mounted.current) return;
 
@@ -147,25 +157,29 @@ export default function Page() {
     }
 
     // если игра не закончена — управление ходом
-    if (turn === CPU && !busy) {
+    if (turn === CPU && !result) {
       setBusy(true);
       setStatus("Компьютер думает…");
       const t = setTimeout(() => {
         setBoard(prev => {
           const idx = cpuMove(prev, 0.08);
-          if (idx == null || prev[idx] !== EMPTY) return prev;
+          const fallback = prev.findIndex(cell => cell === EMPTY);
+          const move = (idx != null && prev[idx] === EMPTY) ? idx : fallback;
+          if (move == null || move < 0) return prev;
           const next = prev.slice();
-          next[idx] = CPU;
+          next[move] = CPU;
           return next;
         });
         setTurn(HUMAN);
         setBusy(false);
         setStatus("Твой ход ✨");
+        cpuTimer.current = null;
       }, 420);
+      cpuTimer.current = t;
       return () => clearTimeout(t);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [r.winner, turn]);
+  }, [r.winner, turn, result]);
 
   const outcomeSentRef = useRef({ win: false, lose: false });
 
@@ -208,6 +222,10 @@ export default function Page() {
   }
 
   function resetGame() {
+    if (cpuTimer.current) {
+      clearTimeout(cpuTimer.current);
+      cpuTimer.current = null;
+    }
     setBoard(Array(9).fill(EMPTY));
     setTurn(HUMAN);
     setBusy(false);
@@ -243,10 +261,14 @@ export default function Page() {
   }
 
   function markBotStarted() {
-    localStorage.setItem("bot_started", "1");
-    setBotStartedHint(true);
-    // Здесь “быстрый юмор”: бот не читает мысли, зато читает /start.
-    setToast("Отлично. Теперь бот не стесняется писать первым 🙂");
+    try {
+      localStorage.setItem("bot_started", "1");
+      setBotStartedHint(true);
+      // Здесь “быстрый юмор”: бот не читает мысли, зато читает /start.
+      setToast("Отлично. Теперь бот не стесняется писать первым 🙂");
+    } catch {
+      setToast("Браузер запретил сохранить шаг 2. Попробуй другой браузер.");
+    }
   }
 
   const connectStepsOk = tgConnectedHint && botStartedHint;
@@ -501,7 +523,15 @@ export default function Page() {
                 </a>
 
                 <button
-                  onClick={() => { localStorage.removeItem("bot_started"); setBotStartedHint(false); setToast("Сбросили шаг 2"); }}
+                  onClick={() => {
+                    try {
+                      localStorage.removeItem("bot_started");
+                      setBotStartedHint(false);
+                      setToast("Сбросили шаг 2");
+                    } catch {
+                      setToast("Не вышло сбросить шаг 2: доступ к хранилищу запрещён.");
+                    }
+                  }}
                   style={{
                     padding: "10px 12px",
                     borderRadius: 14,
