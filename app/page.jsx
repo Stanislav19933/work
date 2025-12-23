@@ -199,11 +199,12 @@ export default function Page() {
       playChord([523, 659], 0.18, 0.07);
       return cleanup;
     }
+  }, [r.winner, r.line]);
 
     if (turn === CPU && !result) {
       setBusy(true);
       setStatus("Компьютер думает…");
-      const t = setTimeout(() => {
+      cpuTimerRef.current = setTimeout(() => {
         setBoard(prev => {
           const idx = cpuMove(prev, 0.08);
           const fallback = prev.findIndex(cell => cell === EMPTY);
@@ -306,11 +307,16 @@ export default function Page() {
     }
     setBoard(prev => {
       if (prev[i] !== EMPTY) return prev;
+      moved = true;
       const next = prev.slice();
       next[i] = HUMAN;
       playTone(420, 0.1, 0.08);
       return next;
     });
+    if (!moved) return;
+    startAmbient();
+    playTone(540, 0.08, 0.04);
+    setBusy(true);
     setTurn(CPU);
   }
 
@@ -427,9 +433,13 @@ export default function Page() {
                   Реванш
                 </button>
               </div>
-            )}
+              <div style={{ color: "var(--muted)", marginTop: 6 }}>
+                Победа подарит промокод, бот шепнёт его тебе в Telegram.
+              </div>
+            </div>
           </div>
         </div>
+      )}
 
         <div style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 22, boxShadow: "0 15px 60px rgba(0,0,0,0.35)", padding: 18, backdropFilter: "blur(12px)", color: "#f2f5ff", display: "grid", gap: 12, alignSelf: "start" }}>
           <div style={{ fontSize: 18, fontWeight: 760 }}>Подключение через Bot WebApp</div>
@@ -499,6 +509,10 @@ export default function Page() {
             <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.4 }}>
               После запуска внутри Telegram статус подключения станет зелёным, и бот сможет писать.
             </div>
+          </div>
+
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.4 }}>
+            Совсем по-дружески: Telegram всё равно требует, чтобы пользователь один раз открыл бота. Мы открываем его автоматически.
           </div>
         </div>
 
