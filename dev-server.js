@@ -2,50 +2,15 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = __dirname;
 
-function parseInitData(initData = '') {
-  const params = new URLSearchParams(initData);
-  const map = {};
-  params.forEach((value, key) => { map[key] = value; });
-  return map;
-}
-
-function verifyInitData(initData, botToken) {
-  if (!initData || !botToken) return false;
-  const params = new URLSearchParams(initData);
-  const hash = params.get('hash');
-  if (!hash) return false;
-
-  params.delete('hash');
-  const data = [];
-  params.forEach((value, key) => data.push(`${key}=${value}`));
-  data.sort();
-  const dataCheckString = data.join('\n');
-
-  const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
-  const computedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-  return computedHash === hash;
-}
-
-function extractRecipient(initDataMap) {
-  try {
-    const chatRaw = initDataMap.chat ? JSON.parse(initDataMap.chat) : null;
-    const userRaw = initDataMap.user ? JSON.parse(initDataMap.user) : null;
-    return chatRaw?.id ?? userRaw?.id ?? null;
-  } catch (err) {
-    return null;
-  }
-}
-
 function sendTelegram(chatId, text) {
   return new Promise((resolve, reject) => {
-    const token = process.env.BOT_TOKEN;
+    const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
-      reject(new Error('Отсутствует BOT_TOKEN'));
+      reject(new Error('Отсутствует TELEGRAM_BOT_TOKEN'));
       return;
     }
 
@@ -114,41 +79,14 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const data = JSON.parse(body || '{}');
-        const { initData, result } = data;
-        if (!initData || !result) {
+        if (!data.chatId || !data.text) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'initData и result обязательны' }));
+          res.end(JSON.stringify({ error: 'chatId и text обязательны' }));
           return;
         }
-
-        if (!verifyInitData(initData, process.env.BOT_TOKEN)) {
-          res.writeHead(401, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'invalid initData' }));
-          return;
-        }
-
-        const parsed = parseInitData(initData);
-        const recipientId = extractRecipient(parsed);
-        if (!recipientId) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'recipient not found' }));
-          return;
-        }
-
-        let code = null;
-        let text = '';
-        if (result === 'win') {
-          code = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
-          text = `Ура! Ты выиграла 🎉 Твой промокод: ${code}`;
-        } else if (result === 'lose') {
-          text = 'Сегодня победа за мной, но ты молодец! Загляни ещё раз и забери подарок.';
-        } else {
-          text = 'Ничья! Давай сыграем ещё раз — подарок тебя ждёт.';
-        }
-
-        await sendTelegram(recipientId, text);
+        await sendTelegram(data.chatId, data.text);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, code }));
+        res.end(JSON.stringify({ ok: true }));
       } catch (error) {
         console.error(error);
         res.writeHead(500, { 'Content-Type': 'application/json' });

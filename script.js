@@ -2,8 +2,7 @@ const state = {
   player: 'X',
   bot: 'O',
   board: Array(9).fill(null),
-  recipientId: null,
-  initData: '',
+  chatId: null,
   gameOver: false,
   sending: false,
 };
@@ -66,16 +65,14 @@ function getChatIdFromTelegram() {
   try {
     tg.ready();
     tg.expand?.();
-    const unsafe = tg.initDataUnsafe;
-    const recipientId = unsafe?.chat?.id ?? unsafe?.user?.id ?? null;
-    if (recipientId) {
-      state.recipientId = recipientId;
-      state.initData = tg.initData || '';
-      setStatus(`Нашла тебя в Telegram: id ${recipientId}. Можем играть!`, 'ok');
+    const user = tg.initDataUnsafe?.user;
+    if (user?.id) {
+      state.chatId = user.id;
+      setStatus(`Нашла тебя в Telegram: chat_id ${user.id}. Можем играть!`, 'ok');
       instruction.textContent = 'Отлично! Теперь просто выигрывай — и я пришлю подарок.';
-      return recipientId;
+      return user.id;
     }
-    setStatus('Не вижу id. Нажми «Открыть Telegram бота» и зайди через кнопку WebApp.', 'warn');
+    setStatus('Не вижу chat_id. Нажми «Открыть Telegram бота» и зайди через кнопку.', 'warn');
     return null;
   } catch (error) {
     setStatus('Не получилось подключиться к Telegram. Попробуй обновить страницу из бота.', 'danger');
@@ -125,28 +122,25 @@ async function handleResult(outcome) {
   let eyebrow = 'Молодец!';
   let title = '';
   let text = '';
-  let codeFromServer = null;
-
-  const serverResponse = await sendGameResult(outcome).catch(() => null);
-  if (serverResponse?.code) {
-    codeFromServer = serverResponse.code;
-  }
 
   if (outcome === 'win') {
-    const code = codeFromServer || Math.floor(10000 + Math.random() * 90000).toString().padStart(5, '0');
+    const code = Math.floor(10000 + Math.random() * 90000).toString();
     eyebrow = 'Ты победила!';
     title = 'Лови твой промокод ✨';
     text = `Вот подарок: ${code}. Я уже отправила его в Telegram.`;
+    await sendTelegramMessage(`Ура! Ты выиграла 🎉 Твой промокод: ${code}`);
     playTone(880, 0.18, 'triangle');
   } else if (outcome === 'lose') {
     eyebrow = 'Ничего страшного';
     title = 'Сегодня не вышло';
     text = 'Я уже написала тебе в Telegram, что жду реванш. Ты сможешь!';
+    await sendTelegramMessage('Сегодня победа за мной, но ты молодец! Загляни ещё раз и забери подарок.');
     playTone(320, 0.2, 'sine');
   } else {
     eyebrow = 'Почти!';
     title = 'Ничья';
     text = 'Мы сыграли ровно. Попробуем ещё?';
+    await sendTelegramMessage('Ничья! Давай сыграем ещё раз — подарок тебя ждёт.');
     playTone(540, 0.15, 'sine');
   }
 
@@ -156,31 +150,28 @@ async function handleResult(outcome) {
   resultEl.classList.add('is-visible');
 }
 
-async function sendGameResult(outcome) {
-  if (!state.recipientId || !state.initData) {
-    showToast('Сначала открой игру через WebApp внутри Telegram, чтобы я увидела твой id.', 'warn');
-    return null;
+async function sendTelegramMessage(text) {
+  if (!state.chatId) {
+    showToast('Сначала открой игру через бота, чтобы я увидела твой chat_id.', 'warn');
+    return;
   }
-  if (state.sending) return null;
+  if (state.sending) return;
 
   state.sending = true;
   try {
     const response = await fetch('/api/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ initData: state.initData, result: outcome }),
+      body: JSON.stringify({ chatId: state.chatId, text }),
     });
 
     if (!response.ok) {
       throw new Error('Ошибка отправки');
     }
-    const data = await response.json();
     showToast('Сообщение улетело в Telegram 💌', 'success');
-    return data;
   } catch (error) {
     console.error(error);
     showToast('Не получилось отправить. Попробуй снова чуть позже.', 'danger');
-    return null;
   } finally {
     state.sending = false;
   }
@@ -188,8 +179,8 @@ async function sendGameResult(outcome) {
 
 function handleCellClick(index) {
   if (state.gameOver || state.board[index]) return;
-  if (!state.recipientId) {
-    showToast('Мне нужен твой id — открой игру через кнопку WebApp в боте.', 'warn');
+  if (!state.chatId) {
+    showToast('Мне нужен твой chat_id — открой игру через бота.', 'warn');
     return;
   }
 
