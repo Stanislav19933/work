@@ -9,17 +9,16 @@ function mustEnv(name) {
 export async function POST(req) {
   try {
     const botToken = mustEnv("TELEGRAM_BOT_TOKEN");
-
-    const cookies = req.cookies;
-    const tgUid = cookies.get("tg_uid")?.value;
-    if (!tgUid) {
-      return NextResponse.json({ error: "Telegram is not connected" }, { status: 400 });
-    }
-
     const body = await req.json().catch(() => null);
     if (!body || (body.result !== "win" && body.result !== "lose")) {
       return NextResponse.json({ error: "Bad payload" }, { status: 400 });
     }
+
+    const username = String(body.username || "").trim();
+    if (!/^@?[a-zA-Z0-9_]{4,}$/i.test(username)) {
+      return NextResponse.json({ error: "Missing or bad username" }, { status: 400 });
+    }
+    const chatId = username.startsWith("@") ? username : `@${username}`;
 
     let text = "Проигрыш";
     if (body.result === "win") {
@@ -35,7 +34,7 @@ export async function POST(req) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        chat_id: tgUid,
+        chat_id: chatId,
         text
       })
     });
