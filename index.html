@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Нежные крестики-нолики</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="card">
+        <header class="header">
+          <div>
+            <h1>Нежные крестики-нолики</h1>
+            <p class="subtitle">Небольшая пауза, чтобы улыбнуться ✨</p>
+          </div>
+          <div class="sound-toggle">
+            <span>Звук:</span>
+            <button id="sound-toggle" type="button">Вкл</button>
+          </div>
+        </header>
+
+        <div class="status-row">
+          <div id="telegram-status" class="telegram-status">Telegram не подключён</div>
+          <button id="connect-telegram" class="primary" type="button">Подключить Telegram</button>
+        </div>
+
+        <div class="board" id="board" aria-label="Игровое поле"></div>
+
+        <div class="controls">
+          <p id="hint">Ваш ход — ставим крестик.</p>
+        </div>
+      </section>
+
+      <section id="result-screen" class="result hidden" aria-live="polite">
+        <div class="result-card">
+          <h2 id="result-title">Результат</h2>
+          <p id="result-message"></p>
+          <button id="play-again" class="primary" type="button">Сыграть ещё</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
