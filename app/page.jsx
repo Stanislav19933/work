@@ -6,10 +6,7 @@ import { generatePromoCode5 } from "@/lib/promo";
 
 const BOT_USERNAME = "cool_woman_bot";
 
-function cls(...a) { return a.filter(Boolean).join(" "); }
-
 function Confetti({ run }) {
-  // Честное "вау" без библиотек: простые частицы.
   const [parts, setParts] = useState([]);
   useEffect(() => {
     if (!run) return;
@@ -29,11 +26,10 @@ function Confetti({ run }) {
   if (parts.length === 0) return null;
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 50
-    }}>
+    <div style={{ position: "fixed", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 50 }}>
       {parts.map(s => (
-        <span key={s.id}
+        <span
+          key={s.id}
           style={{
             position: "absolute",
             left: `${s.x}%`,
@@ -62,14 +58,35 @@ function Confetti({ run }) {
 export default function Page() {
   const [botStartedHint, setBotStartedHint] = useState(false);
 
+  function playTone(freq, duration = 0.12, volume = 0.1, type = "triangle") {
+    const ctx = ensure();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.value = volume;
+    osc.connect(gain).connect(ctx.destination);
+    const now = ctx.currentTime;
+    osc.start(now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.stop(now + duration + 0.02);
+  }
+
+  function playChord(freqs, duration = 0.22, volume = 0.08) {
+    freqs.forEach(f => playTone(f, duration, volume, "sine"));
+  }
+
+  return { playTone, playChord };
+}
+
+export default function Page() {
   const [board, setBoard] = useState(Array(9).fill(EMPTY));
   const [turn, setTurn] = useState(HUMAN);
   const [busy, setBusy] = useState(false);
-
-  const [status, setStatus] = useState("Твой ход ✨");
+  const [status, setStatus] = useState("Нажми на кнопку и подключи Telegram");
   const [result, setResult] = useState(null); // "win" | "lose" | "draw"
   const [winLine, setWinLine] = useState(null);
-
   const [promo, setPromo] = useState(null);
   const [toast, setToast] = useState(null);
   const [confettiRun, setConfettiRun] = useState(false);
@@ -80,6 +97,22 @@ export default function Page() {
   const showGame = connectStepsOk;
 
   const mounted = useRef(false);
+  const cpuTimer = useRef(null);
+  const { playTone, playChord } = useAudio();
+
+  const r = useMemo(() => checkWinner(board), [board]);
+
+  // Показываем всплывашки коротко
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // Глобальный cleanup таймера CPU
+  useEffect(() => () => {
+    if (cpuTimer.current) clearTimeout(cpuTimer.current);
+  }, []);
 
   useEffect(() => {
     // Флаг «нажал Start» — чисто для UX, с защитой на случай запрета localStorage
@@ -98,18 +131,16 @@ export default function Page() {
       setBotStartedHint(false);
     }
 
-    // Подключим виджет только на клиенте
     const script = document.createElement("script");
     script.async = true;
     script.src = "https://telegram.org/js/telegram-widget.js?22";
     script.setAttribute("data-telegram-login", BOT_USERNAME);
     script.setAttribute("data-size", "large");
-    script.setAttribute("data-radius", "14");
+    script.setAttribute("data-radius", "16");
     script.setAttribute("data-userpic", "false");
     script.setAttribute("data-request-access", "write");
     script.setAttribute("data-auth-url", "/api/telegram/auth");
     script.setAttribute("data-lang", "ru");
-
     const mount = document.getElementById("tg-widget-mount");
     mount?.appendChild(script);
 
@@ -117,6 +148,7 @@ export default function Page() {
     return () => { mounted.current = false; };
   }, []);
 
+  // Игра: реакции на победу/проигрыш/ничью и ход бота
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 2200);
@@ -150,25 +182,25 @@ export default function Page() {
 
     if (r.winner === HUMAN) {
       setResult("win");
-      setStatus("Победа! 💎");
+      setStatus("Победа! Промокод уже на экране");
       setWinLine(r.line);
       playTone(640, 0.18, 0.06);
       playTone(820, 0.22, 0.05);
       handleWinOnce();
-      return;
+      return cleanup;
     }
     if (r.winner === CPU) {
       setResult("lose");
-      setStatus("Упс… давай ещё раз?");
+      setStatus("Компьютер взял этот раунд. Попробуем ещё?");
       setWinLine(r.line);
       playTone(310, 0.18, 0.05);
       playTone(260, 0.14, 0.045);
       handleLoseOnce();
-      return;
+      return cleanup;
     }
     if (r.winner === "DRAW") {
       setResult("draw");
-      setStatus("Ничья. Хочешь реванш?");
+      setStatus("Ничья. Можно играть ещё!");
       setWinLine(null);
       playTone(520, 0.12, 0.05);
       return;
@@ -197,6 +229,8 @@ export default function Page() {
       cpuTimer.current = t;
       return () => clearTimeout(t);
     }
+
+    return cleanup;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [r.winner, turn, result]);
 
@@ -222,7 +256,6 @@ export default function Page() {
     setConfettiRun(false);
     setTimeout(() => setConfettiRun(true), 50);
 
-    // Попробуем отправить. Если не подключён Telegram — покажем понятную подсказку.
     try {
       await sendToTelegram({ result: "win", code });
     } catch (e) {
@@ -248,10 +281,11 @@ export default function Page() {
     setBoard(Array(9).fill(EMPTY));
     setTurn(HUMAN);
     setBusy(false);
-    setStatus("Твой ход ✨");
+    setStatus(connected ? "Твой ход ✨" : "Нажми на кнопку и подключи Telegram");
     setResult(null);
     setWinLine(null);
     setPromo(null);
+    setConfettiRun(false);
     outcomeSentRef.current = { win: false, lose: false };
   }
 
@@ -265,6 +299,7 @@ export default function Page() {
       moved = true;
       const next = prev.slice();
       next[i] = HUMAN;
+      playTone(420, 0.1, 0.08);
       return next;
     });
     if (!moved) return;
@@ -451,6 +486,7 @@ export default function Page() {
                 Сбросить
               </button>
             </div>
+          </div>
 
             <div style={{
               marginTop: 14,
@@ -626,23 +662,15 @@ export default function Page() {
               )}
             </div>
           </div>
+
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.4 }}>
+            Совсем по-дружески: Telegram всё равно требует, чтобы пользователь один раз открыл бота. Мы открываем его автоматически.
+          </div>
         </div>
       )}
 
       {toast && (
-        <div style={{
-          position: "fixed",
-          bottom: 18,
-          left: "50%",
-          transform: "translateX(-50%)",
-          padding: "10px 14px",
-          borderRadius: 14,
-          background: "rgba(27,27,31,0.82)",
-          color: "white",
-          boxShadow: "var(--shadow2)",
-          animation: "pop 120ms ease-out",
-          zIndex: 60
-        }}>
+        <div style={{ position: "fixed", bottom: 18, left: "50%", transform: "translateX(-50%)", padding: "10px 14px", borderRadius: 14, background: "rgba(15,15,20,0.9)", color: "white", boxShadow: "0 10px 30px rgba(0,0,0,0.35)", animation: "pop 120ms ease-out", zIndex: 60 }}>
           {toast}
         </div>
       )}
