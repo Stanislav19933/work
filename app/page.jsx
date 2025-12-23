@@ -6,10 +6,7 @@ import { generatePromoCode5 } from "@/lib/promo";
 
 const BOT_USERNAME = "cool_woman_bot";
 
-function cls(...a) { return a.filter(Boolean).join(" "); }
-
 function Confetti({ run }) {
-  // Честное "вау" без библиотек: простые частицы.
   const [parts, setParts] = useState([]);
   useEffect(() => {
     if (!run) return;
@@ -29,11 +26,10 @@ function Confetti({ run }) {
   if (parts.length === 0) return null;
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 50
-    }}>
+    <div style={{ position: "fixed", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 50 }}>
       {parts.map(s => (
-        <span key={s.id}
+        <span
+          key={s.id}
           style={{
             position: "absolute",
             left: `${s.x}%`,
@@ -59,58 +55,106 @@ function Confetti({ run }) {
   );
 }
 
-export default function Page() {
-  const [tgConnectedHint, setTgConnectedHint] = useState(false);
-  const [botStartedHint, setBotStartedHint] = useState(false);
+function useAudio() {
+  const ctxRef = useRef(null);
 
+  function ensure() {
+    if (!ctxRef.current) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return null;
+      ctxRef.current = new AudioCtx();
+    }
+    if (ctxRef.current.state === "suspended") ctxRef.current.resume();
+    return ctxRef.current;
+  }
+
+  function playTone(freq, duration = 0.12, volume = 0.1, type = "triangle") {
+    const ctx = ensure();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.value = volume;
+    osc.connect(gain).connect(ctx.destination);
+    const now = ctx.currentTime;
+    osc.start(now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.stop(now + duration + 0.02);
+  }
+
+  function playChord(freqs, duration = 0.22, volume = 0.08) {
+    freqs.forEach(f => playTone(f, duration, volume, "sine"));
+  }
+
+  return { playTone, playChord };
+}
+
+export default function Page() {
   const [board, setBoard] = useState(Array(9).fill(EMPTY));
   const [turn, setTurn] = useState(HUMAN);
   const [busy, setBusy] = useState(false);
-
-  const [status, setStatus] = useState("Твой ход ✨");
+  const [status, setStatus] = useState("Нажми на кнопку и подключи Telegram");
   const [result, setResult] = useState(null); // "win" | "lose" | "draw"
   const [winLine, setWinLine] = useState(null);
-
   const [promo, setPromo] = useState(null);
   const [toast, setToast] = useState(null);
   const [confettiRun, setConfettiRun] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [botStarted, setBotStarted] = useState(false);
 
   const mounted = useRef(false);
+  const cpuTimer = useRef(null);
+  const { playTone, playChord } = useAudio();
 
-  // Telegram Login Widget: вставляется скриптом
+  const r = useMemo(() => checkWinner(board), [board]);
+
+  // Показываем всплывашки коротко
   useEffect(() => {
-    // Подсказки статуса из URL-параметров
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // Глобальный cleanup таймера CPU
+  useEffect(() => () => {
+    if (cpuTimer.current) clearTimeout(cpuTimer.current);
+  }, []);
+
+  // Подключение Telegram Login Widget
+  useEffect(() => {
     const url = new URL(window.location.href);
     const tg = url.searchParams.get("tg");
-    if (tg === "ok") setTgConnectedHint(true);
-    if (tg === "fail") setToast("Не удалось подключить Telegram. Попробуй ещё раз.");
-
-    // Уберём хвост ?tg=... чтобы выглядело аккуратно
+    if (tg === "ok") {
+      setConnected(true);
+      setToast("Телеграм подключён. Я открыл бота — нажми Start, если ещё не нажимал.");
+      openBotForStart();
+    }
+    if (tg === "fail") {
+      setToast("Не получилось войти через Telegram. Попробуй снова.");
+    }
     if (tg) {
       url.searchParams.delete("tg");
       window.history.replaceState({}, "", url.toString());
     }
 
-    // Флаг "нажимал открыть бота" — чисто для UX
     try {
       const started = localStorage.getItem("bot_started") === "1";
-      setBotStartedHint(started);
+      setBotStarted(started);
     } catch {
-      setBotStartedHint(false);
+      setBotStarted(false);
     }
 
-    // Подключим виджет только на клиенте
     const script = document.createElement("script");
     script.async = true;
     script.src = "https://telegram.org/js/telegram-widget.js?22";
     script.setAttribute("data-telegram-login", BOT_USERNAME);
     script.setAttribute("data-size", "large");
-    script.setAttribute("data-radius", "14");
+    script.setAttribute("data-radius", "16");
     script.setAttribute("data-userpic", "false");
     script.setAttribute("data-request-access", "write");
     script.setAttribute("data-auth-url", "/api/telegram/auth");
     script.setAttribute("data-lang", "ru");
-
     const mount = document.getElementById("tg-widget-mount");
     mount?.appendChild(script);
 
@@ -118,47 +162,36 @@ export default function Page() {
     return () => { mounted.current = false; };
   }, []);
 
+  // Игра: реакции на победу/проигрыш/ничью и ход бота
   useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2200);
-    return () => clearTimeout(t);
-  }, [toast]);
+    if (!mounted.current) return undefined;
 
-  const r = useMemo(() => checkWinner(board), [board]);
-
-  const cpuTimer = useRef(null);
-
-  useEffect(() => () => {
-    if (cpuTimer.current) clearTimeout(cpuTimer.current);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted.current) return;
-
-    let cleanup = null;
+    let cleanup;
 
     if (r.winner === HUMAN) {
       setResult("win");
-      setStatus("Победа! 💎");
+      setStatus("Победа! Промокод уже на экране");
       setWinLine(r.line);
+      playChord([880, 1175, 1568], 0.3, 0.1);
       handleWinOnce();
       return cleanup;
     }
     if (r.winner === CPU) {
       setResult("lose");
-      setStatus("Упс… давай ещё раз?");
+      setStatus("Компьютер взял этот раунд. Попробуем ещё?");
       setWinLine(r.line);
+      playTone(220, 0.4, 0.08, "sawtooth");
       handleLoseOnce();
       return cleanup;
     }
     if (r.winner === "DRAW") {
       setResult("draw");
-      setStatus("Ничья. Хочешь реванш?");
+      setStatus("Ничья. Можно играть ещё!");
       setWinLine(null);
+      playChord([523, 659], 0.18, 0.07);
       return cleanup;
     }
 
-    // если игра не закончена — управление ходом
     if (turn === CPU && !result) {
       setBusy(true);
       setStatus("Компьютер думает…");
@@ -170,6 +203,7 @@ export default function Page() {
           if (move == null || move < 0) return prev;
           const next = prev.slice();
           next[move] = CPU;
+          playTone(520, 0.12, 0.07);
           return next;
         });
         setTurn(HUMAN);
@@ -207,11 +241,10 @@ export default function Page() {
     setConfettiRun(false);
     setTimeout(() => setConfettiRun(true), 50);
 
-    // Попробуем отправить. Если не подключён Telegram — покажем понятную подсказку.
     try {
       await sendToTelegram({ result: "win", code });
     } catch (e) {
-      setToast("Подключи Telegram и нажми Start у бота — иначе он не сможет написать тебе.");
+      setToast("Бот не смог написать. Убедись, что ты нажал Start в Telegram.");
     }
   }
 
@@ -221,7 +254,19 @@ export default function Page() {
     try {
       await sendToTelegram({ result: "lose" });
     } catch (e) {
-      setToast("Чтобы получить сообщение в Telegram, подключи Telegram и нажми Start у бота.");
+      setToast("Чтобы бот написал, открой его и нажми Start.");
+    }
+  }
+
+  function openBotForStart() {
+    const url = `https://t.me/${BOT_USERNAME}?start=play`;
+    const win = window.open(url, "_blank", "noopener,noreferrer");
+    if (!win) setToast("Открой бота вручную: https://t.me/cool_woman_bot");
+    try {
+      localStorage.setItem("bot_started", "1");
+      setBotStarted(true);
+    } catch {
+      setBotStarted(true);
     }
   }
 
@@ -233,10 +278,11 @@ export default function Page() {
     setBoard(Array(9).fill(EMPTY));
     setTurn(HUMAN);
     setBusy(false);
-    setStatus("Твой ход ✨");
+    setStatus(connected ? "Твой ход ✨" : "Нажми на кнопку и подключи Telegram");
     setResult(null);
     setWinLine(null);
     setPromo(null);
+    setConfettiRun(false);
     outcomeSentRef.current = { win: false, lose: false };
   }
 
@@ -244,10 +290,15 @@ export default function Page() {
     if (busy) return;
     if (result) return;
     if (turn !== HUMAN) return;
+    if (!connected) {
+      setToast("Подключи Telegram, тогда бот пришлёт результат.");
+      return;
+    }
     setBoard(prev => {
       if (prev[i] !== EMPTY) return prev;
       const next = prev.slice();
       next[i] = HUMAN;
+      playTone(420, 0.1, 0.08);
       return next;
     });
     setTurn(CPU);
@@ -264,168 +315,90 @@ export default function Page() {
     }
   }
 
-  function markBotStarted() {
-    try {
-      localStorage.setItem("bot_started", "1");
-      setBotStartedHint(true);
-      // Здесь “быстрый юмор”: бот не читает мысли, зато читает /start.
-      setToast("Отлично. Теперь бот не стесняется писать первым 🙂");
-    } catch {
-      setToast("Браузер запретил сохранить шаг 2. Попробуй другой браузер.");
-    }
-  }
-
-  const connectStepsOk = tgConnectedHint && botStartedHint;
+  const connectedText = connected
+    ? botStarted
+      ? "Telegram подключён, бот знает тебя"
+      : "Telegram подключён. Я открыл бота в новой вкладке — нажми Start"
+    : "Нажми на кнопку ниже — вход через Telegram за 2 секунды";
 
   return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 18 }}>
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 18, background: "radial-gradient(900px 700px at 20% 10%, rgba(192, 92, 255, 0.18), transparent 60%), radial-gradient(900px 700px at 80% 20%, rgba(109, 214, 255, 0.20), transparent 60%), radial-gradient(900px 700px at 60% 85%, rgba(255, 77, 109, 0.14), transparent 60%), linear-gradient(180deg, #0b1021, #0c1429)" }}>
       <Confetti run={confettiRun} />
 
-      <div style={{
-        width: "min(980px, 100%)",
-        display: "grid",
-        gap: 16,
-        gridTemplateColumns: "1.2fr 0.8fr"
-      }}>
-        <div style={{
-          background: "var(--card)",
-          border: "1px solid var(--cardBorder)",
-          borderRadius: "var(--radius)",
-          boxShadow: "var(--shadow)",
-          padding: 18,
-          backdropFilter: "blur(10px)"
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+      <div style={{ width: "min(1200px, 100%)", display: "grid", gap: 18, gridTemplateColumns: "1.1fr 0.9fr" }}>
+        <div style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 22, boxShadow: "0 15px 60px rgba(0,0,0,0.35)", padding: 18, backdropFilter: "blur(12px)", position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 20% 20%, rgba(192,92,255,0.18), transparent 40%), radial-gradient(circle at 80% 10%, rgba(109,214,255,0.18), transparent 45%)", pointerEvents: "none" }} />
+          <div style={{ position: "relative", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
             <div>
-              <div style={{ fontSize: 28, fontWeight: 720, letterSpacing: "-0.02em" }}>
-                Крестики-нолики
-              </div>
-              <div style={{ color: "var(--muted)", marginTop: 6 }}>
-                Победа — промокод. Результат приходит в Telegram.
+              <div style={{ fontSize: 30, fontWeight: 760, letterSpacing: "-0.02em", color: "#f5f7ff" }}>Крестики-нолики 2.0</div>
+              <div style={{ color: "rgba(255,255,255,0.75)", marginTop: 4, fontSize: 15 }}>
+                Один клик — бот подключён. Победа = промокод, бот пришлёт сообщение сам.
               </div>
             </div>
-
             <button
               onClick={resetGame}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 14,
-                border: "1px solid rgba(27,27,31,0.12)",
-                background: "rgba(255,255,255,0.65)",
-                boxShadow: "var(--shadow2)",
-                cursor: "pointer"
-              }}
+              style={{ padding: "10px 14px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.16)", background: "rgba(255,255,255,0.12)", color: "white", boxShadow: "0 10px 30px rgba(0,0,0,0.25)", cursor: "pointer", backdropFilter: "blur(6px)" }}
             >
               Сбросить
             </button>
           </div>
 
-          <div style={{
-            marginTop: 14,
-            display: "grid",
-            gridTemplateColumns: "1fr",
-            gap: 12
-          }}>
-            <div style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
-              padding: 14,
-              borderRadius: 18,
-              background: "rgba(255,255,255,0.55)",
-              border: "1px solid rgba(27,27,31,0.10)"
-            }}>
+          <div style={{ position: "relative", marginTop: 16, display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
+            <div style={{ padding: 14, borderRadius: 16, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", boxShadow: "0 12px 30px rgba(0,0,0,0.25)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <div>
-                <div style={{ fontWeight: 650 }}>{status}</div>
-                <div style={{ color: "var(--muted)", marginTop: 4 }}>
-                  {connectStepsOk ? "Подключение к Telegram готово." : "Перед игрой подключи Telegram (2 шага)."}
-                </div>
+                <div style={{ fontWeight: 700, fontSize: 17, color: "#f7f8ff" }}>{status}</div>
+                <div style={{ color: "rgba(255,255,255,0.7)", marginTop: 4, fontSize: 14 }}>{connectedText}</div>
               </div>
 
               {promo && (
                 <button
                   onClick={copyPromo}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(192,92,255,0.28)",
-                    background: "linear-gradient(90deg, rgba(192,92,255,0.16), rgba(109,214,255,0.14))",
-                    cursor: "pointer",
-                    animation: "glow 1.4s ease-in-out infinite"
-                  }}
+                  style={{ padding: "10px 12px", borderRadius: 14, border: "1px solid rgba(192,92,255,0.28)", background: "linear-gradient(90deg, rgba(192,92,255,0.2), rgba(109,214,255,0.18))", cursor: "pointer", color: "#120b1f", fontWeight: 750, boxShadow: "0 10px 35px rgba(192,92,255,0.25)", animation: "glow 1.4s ease-in-out infinite" }}
                   title="Скопировать промокод"
                 >
-                  {promo} · Скопировать
+                  {promo} · копировать
                 </button>
               )}
             </div>
 
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 10,
-              padding: 12,
-              borderRadius: 22,
-              background: "rgba(255,255,255,0.55)",
-              border: "1px solid rgba(27,27,31,0.10)"
-            }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, padding: 14, borderRadius: 22, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12)" }}>
               {board.map((v, i) => {
                 const isWin = winLine?.includes(i);
+                const isAvailable = v === EMPTY && !result && turn === HUMAN && !busy;
                 return (
                   <button
                     key={i}
                     onClick={() => onCell(i)}
                     disabled={busy || !!result || turn !== HUMAN}
                     style={{
-                      height: 110,
+                      height: 120,
                       borderRadius: 18,
-                      border: "1px solid rgba(27,27,31,0.10)",
+                      border: "1px solid rgba(255,255,255,0.16)",
                       background: isWin
-                        ? "linear-gradient(180deg, rgba(192,92,255,0.18), rgba(109,214,255,0.12))"
-                        : "rgba(255,255,255,0.68)",
-                      boxShadow: isWin ? "0 0 0 2px rgba(192,92,255,0.18), var(--shadow2)" : "var(--shadow2)",
-                      cursor: "pointer",
-                      transition: "transform 120ms ease, filter 120ms ease",
-                      filter: busy ? "saturate(0.95)" : "none",
+                        ? "linear-gradient(180deg, rgba(192,92,255,0.3), rgba(109,214,255,0.18))"
+                        : "rgba(255,255,255,0.08)",
+                      boxShadow: isWin
+                        ? "0 0 0 2px rgba(192,92,255,0.35), 0 14px 30px rgba(0,0,0,0.25)"
+                        : "0 12px 26px rgba(0,0,0,0.22)",
+                      cursor: isAvailable ? "pointer" : "not-allowed",
                       position: "relative",
-                      overflow: "hidden"
+                      overflow: "hidden",
+                      transition: "transform 120ms ease, filter 120ms ease, box-shadow 140ms ease",
+                      transform: isAvailable ? "translateY(-1px)" : "none",
+                      color: "white"
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0px)"; }}
                     aria-label={`cell-${i}`}
                   >
-                    <span style={{
-                      display: "inline-block",
-                      fontSize: 54,
-                      fontWeight: 780,
-                      letterSpacing: "-0.05em",
-                      transform: v ? "scale(1)" : "scale(0.92)",
-                      opacity: v ? 1 : 0,
-                      animation: v ? "pop 140ms ease-out" : "none",
-                      color: v === HUMAN ? "rgba(27,27,31,0.90)" : "rgba(192,92,255,0.92)"
-                    }}>
+                    <span style={{ display: "inline-block", fontSize: 54, fontWeight: 780, letterSpacing: "-0.05em", transform: v ? "scale(1)" : "scale(0.92)", opacity: v ? 1 : 0, animation: v ? "pop 140ms ease-out" : "none", color: v === HUMAN ? "#fdf5ff" : "#b98eff", textShadow: v ? "0 4px 20px rgba(0,0,0,0.35)" : "none" }}>
                       {v ?? ""}
                     </span>
 
                     {!v && !result && turn === HUMAN && !busy && (
-                      <span style={{
-                        position: "absolute",
-                        inset: 0,
-                        opacity: 0,
-                        transition: "opacity 120ms ease",
-                        background: "linear-gradient(90deg, rgba(192,92,255,0.12), rgba(109,214,255,0.10))"
-                      }} />
+                      <span style={{ position: "absolute", inset: 0, opacity: 0.12, background: "linear-gradient(120deg, rgba(192,92,255,0.25), rgba(109,214,255,0.22))" }} />
                     )}
 
                     {isWin && (
-                      <span style={{
-                        position: "absolute",
-                        left: "-40%",
-                        top: 0,
-                        width: "40%",
-                        height: "100%",
-                        background: "rgba(255,255,255,0.35)",
-                        transform: "skewX(-18deg)",
-                        animation: "shimmer 900ms ease-in-out infinite"
-                      }} />
+                      <span style={{ position: "absolute", left: "-40%", top: 0, width: "40%", height: "100%", background: "rgba(255,255,255,0.35)", transform: "skewX(-18deg)", animation: "shimmer 900ms ease-in-out infinite" }} />
                     )}
                   </button>
                 );
@@ -433,173 +406,69 @@ export default function Page() {
             </div>
 
             {result && (
-              <div style={{
-                padding: 14,
-                borderRadius: 18,
-                border: "1px solid rgba(27,27,31,0.10)",
-                background: "rgba(255,255,255,0.55)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 12
-              }}>
-                <div style={{ color: "var(--muted)" }}>
-                  {result === "win" && "Промокод уже на экране. Сообщение отправлено в Telegram (если подключено)."}
-                  {result === "lose" && "Сообщение о проигрыше отправлено в Telegram (если подключено)."}
-                  {result === "draw" && "Ничья — иногда это стиль."}
+              <div style={{ padding: 14, borderRadius: 16, border: "1px solid rgba(255,255,255,0.16)", background: "rgba(255,255,255,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, color: "rgba(255,255,255,0.78)" }}>
+                <div>
+                  {result === "win" && "Промокод на экране. Я отправил его и в Telegram (если подключён)."}
+                  {result === "lose" && "Отправил сообщение о проигрыше в Telegram (если подключён)."}
+                  {result === "draw" && "Ничья — отличный повод сыграть ещё."}
                 </div>
                 <button
                   onClick={resetGame}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(27,27,31,0.12)",
-                    background: "rgba(255,255,255,0.65)",
-                    boxShadow: "var(--shadow2)",
-                    cursor: "pointer"
-                  }}
+                  style={{ padding: "10px 14px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.16)", background: "rgba(255,255,255,0.14)", color: "white", cursor: "pointer", boxShadow: "0 10px 30px rgba(0,0,0,0.22)" }}
                 >
-                  Сыграть ещё раз
+                  Реванш
                 </button>
               </div>
             )}
           </div>
         </div>
 
-        <div style={{
-          background: "var(--card)",
-          border: "1px solid var(--cardBorder)",
-          borderRadius: "var(--radius)",
-          boxShadow: "var(--shadow)",
-          padding: 18,
-          backdropFilter: "blur(10px)",
-          alignSelf: "start"
-        }}>
-          <div style={{ fontSize: 18, fontWeight: 750 }}>Подключение Telegram</div>
-          <div style={{ color: "var(--muted)", marginTop: 8, lineHeight: 1.35 }}>
-            Чтобы результат пришёл <b>тебе</b>, бот должен знать твой chat_id и иметь право написать.
-            Это 2 шага и занимает ~10 секунд.
+        <div style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 22, boxShadow: "0 15px 60px rgba(0,0,0,0.35)", padding: 18, backdropFilter: "blur(12px)", color: "#f2f5ff", display: "grid", gap: 12, alignSelf: "start" }}>
+          <div style={{ fontSize: 18, fontWeight: 760 }}>Подключение в один клик</div>
+          <div style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.5 }}>
+            Нажми кнопку ниже — это официальный Telegram Login. После входа я автоматически открою бота в новой вкладке,
+            чтобы он мог писать тебе про победу или поражение с промокодом.
           </div>
 
-          <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
-            <div style={{
-              padding: 12,
-              borderRadius: 18,
-              border: "1px solid rgba(27,27,31,0.10)",
-              background: "rgba(255,255,255,0.55)"
-            }}>
-              <div style={{ fontWeight: 700 }}>
-                {tgConnectedHint ? "✅ Шаг 1: Telegram подключён" : "Шаг 1: Войти через Telegram"}
-              </div>
-              <div style={{ color: "var(--muted)", marginTop: 6 }}>
-                Нажми кнопку ниже. Если не работает — проверь, что домен добавлен в BotFather через /setdomain.
-              </div>
-              <div id="tg-widget-mount" style={{ marginTop: 10 }} />
+          <div style={{ position: "relative", padding: 14, borderRadius: 18, border: "1px solid rgba(255,255,255,0.18)", background: "linear-gradient(135deg, rgba(192,92,255,0.18), rgba(109,214,255,0.16))", boxShadow: "0 14px 35px rgba(0,0,0,0.28)" }}>
+            <div id="tg-widget-mount" style={{ display: "inline-block" }} />
+            <div style={{ marginTop: 10, color: "rgba(15,12,30,0.9)", fontWeight: 650 }}>
+              Если кнопка не сработала, открой бота вручную: <a href={`https://t.me/${BOT_USERNAME}?start=play`} target="_blank" rel="noreferrer" style={{ color: "#120b1f", fontWeight: 760 }}>@{BOT_USERNAME}</a>
             </div>
+          </div>
 
-            <div style={{
-              padding: 12,
-              borderRadius: 18,
-              border: "1px solid rgba(27,27,31,0.10)",
-              background: "rgba(255,255,255,0.55)"
-            }}>
-              <div style={{ fontWeight: 700 }}>
-                {botStartedHint ? "✅ Шаг 2: Start у бота сделан" : "Шаг 2: Нажать Start у бота"}
-              </div>
-              <div style={{ color: "var(--muted)", marginTop: 6 }}>
-                Telegram запрещает боту писать первым. Нажми Start — и бот сможет прислать результат.
-              </div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                <a
-                  href={`https://t.me/${BOT_USERNAME}?start=play`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={markBotStarted}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(192,92,255,0.28)",
-                    background: "linear-gradient(90deg, rgba(192,92,255,0.16), rgba(109,214,255,0.14))",
-                    boxShadow: "var(--shadow2)"
-                  }}
-                >
-                  Открыть бота
-                </a>
-
-                <button
-                  onClick={() => {
-                    try {
-                      localStorage.removeItem("bot_started");
-                      setBotStartedHint(false);
-                      setToast("Сбросили шаг 2");
-                    } catch {
-                      setToast("Не вышло сбросить шаг 2: доступ к хранилищу запрещён.");
-                    }
-                  }}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(27,27,31,0.12)",
-                    background: "rgba(255,255,255,0.65)",
-                    boxShadow: "var(--shadow2)",
-                    cursor: "pointer"
-                  }}
-                >
-                  Сброс шага 2
-                </button>
-              </div>
+          <div style={{ display: "grid", gap: 10, fontSize: 14, color: "rgba(255,255,255,0.75)" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ width: 10, height: 10, borderRadius: 10, background: connected ? "#2bb673" : "#ffb347", boxShadow: connected ? "0 0 12px #2bb673" : "0 0 12px #ffb347" }} />
+              {connected ? "Telegram подключён" : "Ждём входа через Telegram"}
             </div>
-
-            <div style={{
-              padding: 12,
-              borderRadius: 18,
-              border: "1px solid rgba(27,27,31,0.10)",
-              background: connectStepsOk
-                ? "linear-gradient(180deg, rgba(43,182,115,0.10), rgba(255,255,255,0.55))"
-                : "rgba(255,255,255,0.55)"
-            }}>
-              <div style={{ fontWeight: 750 }}>
-                {connectStepsOk ? "Готово. Можно играть." : "Подключи Telegram и нажми Start."}
-              </div>
-              <div style={{ color: "var(--muted)", marginTop: 6 }}>
-                Потом выиграй или проиграй — и сообщение прилетит в твой Telegram.
-              </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ width: 10, height: 10, borderRadius: 10, background: botStarted ? "#2bb673" : "#ffb347", boxShadow: botStarted ? "0 0 12px #2bb673" : "0 0 12px #ffb347" }} />
+              {botStarted ? "Бот открыт (Start нажат)" : "Открою бота сразу после входа"}
             </div>
-
-            <div style={{ color: "var(--muted)", fontSize: 12 }}>
-              Примечание: “Сброс шага 2” нужен только для теста. Бот не читает мысли, зато читает /start.
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ width: 10, height: 10, borderRadius: 10, background: result ? "#8dc6ff" : "#fff", boxShadow: "0 0 12px rgba(255,255,255,0.55)" }} />
+              {result ? "Игра завершена — можно начать новую" : "Сыграй и поймай промокод"}
             </div>
+          </div>
+
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.4 }}>
+            Совсем по-дружески: Telegram всё равно требует, чтобы пользователь один раз открыл бота. Мы открываем его автоматически.
           </div>
         </div>
       </div>
 
       {toast && (
-        <div style={{
-          position: "fixed",
-          bottom: 18,
-          left: "50%",
-          transform: "translateX(-50%)",
-          padding: "10px 14px",
-          borderRadius: 14,
-          background: "rgba(27,27,31,0.82)",
-          color: "white",
-          boxShadow: "var(--shadow2)",
-          animation: "pop 120ms ease-out",
-          zIndex: 60
-        }}>
+        <div style={{ position: "fixed", bottom: 18, left: "50%", transform: "translateX(-50%)", padding: "10px 14px", borderRadius: 14, background: "rgba(15,15,20,0.9)", color: "white", boxShadow: "0 10px 30px rgba(0,0,0,0.35)", animation: "pop 120ms ease-out", zIndex: 60 }}>
           {toast}
         </div>
       )}
 
       <style jsx>{`
-        @media (max-width: 920px) {
-          div[style*="grid-template-columns: 1.2fr 0.8fr"] {
-            grid-template-columns: 1fr !important;
-          }
-          button[aria-label^="cell-"] {
-            height: 96px !important;
-          }
-        }
+        @keyframes pop { 0% { transform: scale(0.94); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes glow { 0% { box-shadow: 0 0 0 rgba(192, 92, 255, 0.0); } 50% { box-shadow: 0 0 24px rgba(192, 92, 255, 0.45); } 100% { box-shadow: 0 0 0 rgba(192, 92, 255, 0.0); } }
+        @keyframes shimmer { 0% { transform: translateX(-60%) skewX(-18deg); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(60%) skewX(-18deg); opacity: 0; } }
+        @media (max-width: 1024px) { div[style*="grid-template-columns: 1.1fr 0.9fr"] { grid-template-columns: 1fr !important; } button[aria-label^="cell-"] { height: 100px !important; } }
       `}</style>
     </div>
   );
