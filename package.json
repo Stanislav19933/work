@@ -1,0 +1,8 @@
+{
+  "name": "gentle-tic-tac-toe",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tic-tac-toe with Telegram notifications on Vercel",
+  "license": "MIT"
+}
