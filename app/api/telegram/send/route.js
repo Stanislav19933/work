@@ -9,16 +9,14 @@ function mustEnv(name) {
 export async function POST(req) {
   try {
     const botToken = mustEnv("TELEGRAM_BOT_TOKEN");
-
-    const cookies = req.cookies;
-    const tgUid = cookies.get("tg_uid")?.value;
-    if (!tgUid) {
-      return NextResponse.json({ error: "Telegram is not connected" }, { status: 400 });
-    }
-
     const body = await req.json().catch(() => null);
     if (!body || (body.result !== "win" && body.result !== "lose")) {
       return NextResponse.json({ error: "Bad payload" }, { status: 400 });
+    }
+
+    const tgUid = req.cookies.get("tg_uid")?.value;
+    if (!tgUid) {
+      return NextResponse.json({ error: "Telegram is not connected" }, { status: 400 });
     }
 
     let text = "Проигрыш";
