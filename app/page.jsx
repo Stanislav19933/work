@@ -90,6 +90,29 @@ export default function Page() {
       setBotStartedHint(false);
     }
 
+    // Флаг "нажимал открыть бота" — чисто для UX
+    try {
+      const started = localStorage.getItem("bot_started") === "1";
+      setBotStartedHint(started);
+    } catch {
+      setBotStartedHint(false);
+    }
+
+    // Подключим виджет только на клиенте
+    const script = document.createElement("script");
+    script.async = true;
+    script.src = "https://telegram.org/js/telegram-widget.js?22";
+    script.setAttribute("data-telegram-login", BOT_USERNAME);
+    script.setAttribute("data-size", "large");
+    script.setAttribute("data-radius", "14");
+    script.setAttribute("data-userpic", "false");
+    script.setAttribute("data-request-access", "write");
+    script.setAttribute("data-auth-url", "/api/telegram/auth");
+    script.setAttribute("data-lang", "ru");
+
+    const mount = document.getElementById("tg-widget-mount");
+    mount?.appendChild(script);
+
     mounted.current = true;
     return () => { mounted.current = false; };
   }, []);
@@ -116,50 +139,10 @@ export default function Page() {
 
   const r = useMemo(() => checkWinner(board), [board]);
 
-  function getAudioCtx() {
-    try {
-      const ctx = audioCtxRef.current || new (window.AudioContext || window.webkitAudioContext)();
-      audioCtxRef.current = ctx;
-      return ctx;
-    } catch {
-      return null;
-    }
-  }
+  const cpuTimer = useRef(null);
 
-  function playTone(freq = 520, duration = 0.10, volume = 0.04, type = "sine") {
-    const ctx = getAudioCtx();
-    if (!ctx) return;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = type;
-    osc.frequency.value = freq;
-    gain.gain.value = volume;
-    osc.connect(gain).connect(ctx.destination);
-    const now = ctx.currentTime;
-    osc.start(now);
-    osc.stop(now + duration);
-  }
-
-  function startAmbient() {
-    if (ambientRef.current.started) return;
-    ambientRef.current.started = true;
-    const ctx = getAudioCtx();
-    if (!ctx) return;
-    const playChord = () => {
-      const base = 392; // G4
-      [0, 4, 7].forEach((step, idx) => {
-        playTone(base * Math.pow(2, step / 12), 0.6, 0.03 - idx * 0.004, "sine");
-      });
-    };
-    playChord();
-    ambientRef.current.timer = setInterval(playChord, 6400);
-  }
-
-  useEffect(() => {
-    return () => {
-      if (ambientRef.current.timer) clearInterval(ambientRef.current.timer);
-      ambientRef.current.timer = null;
-    };
+  useEffect(() => () => {
+    if (cpuTimer.current) clearTimeout(cpuTimer.current);
   }, []);
 
   useEffect(() => {
@@ -192,44 +175,30 @@ export default function Page() {
     }
   }, [r.winner, r.line]);
 
-  useEffect(() => {
-    if (!mounted.current) return;
-    if (!showGame) return;
-    if (result) return;
-
-    if (cpuTimerRef.current) {
-      clearTimeout(cpuTimerRef.current);
-      cpuTimerRef.current = null;
-    }
-
-    if (turn === CPU) {
+    // если игра не закончена — управление ходом
+    if (turn === CPU && !result) {
       setBusy(true);
       setStatus("Компьютер думает…");
       cpuTimerRef.current = setTimeout(() => {
         setBoard(prev => {
           const idx = cpuMove(prev, 0.08);
-          if (idx == null || prev[idx] !== EMPTY) return prev;
+          const fallback = prev.findIndex(cell => cell === EMPTY);
+          const move = (idx != null && prev[idx] === EMPTY) ? idx : fallback;
+          if (move == null || move < 0) return prev;
           const next = prev.slice();
-          next[idx] = CPU;
+          next[move] = CPU;
           return next;
         });
         setTurn(HUMAN);
         setBusy(false);
         setStatus("Твой ход ✨");
-        cpuTimerRef.current = null;
+        cpuTimer.current = null;
       }, 420);
-    } else {
-      setBusy(false);
-      setStatus("Твой ход ✨");
+      cpuTimer.current = t;
+      return () => clearTimeout(t);
     }
-
-    return () => {
-      if (cpuTimerRef.current) {
-        clearTimeout(cpuTimerRef.current);
-        cpuTimerRef.current = null;
-      }
-    };
-  }, [turn, result, showGame]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [r.winner, turn, result]);
 
   const outcomeSentRef = useRef({ win: false, lose: false });
 
@@ -272,6 +241,10 @@ export default function Page() {
   }
 
   function resetGame() {
+    if (cpuTimer.current) {
+      clearTimeout(cpuTimer.current);
+      cpuTimer.current = null;
+    }
     setBoard(Array(9).fill(EMPTY));
     setTurn(HUMAN);
     setBusy(false);
@@ -315,12 +288,12 @@ export default function Page() {
   function markBotStarted() {
     try {
       localStorage.setItem("bot_started", "1");
+      setBotStartedHint(true);
+      // Здесь “быстрый юмор”: бот не читает мысли, зато читает /start.
+      setToast("Отлично. Теперь бот не стесняется писать первым 🙂");
     } catch {
-      // игнорируем, это только подсказка состояния
+      setToast("Браузер запретил сохранить шаг 2. Попробуй другой браузер.");
     }
-    setBotStartedHint(true);
-    // Здесь “быстрый юмор”: бот не читает мысли, зато читает /start.
-    setToast("Открываем бота. Нажми Start — и вернись играть 💜");
   }
 
   return (
@@ -518,22 +491,27 @@ export default function Page() {
                   Открыть бота заново
                 </a>
 
-                {promo && (
-                  <button
-                    onClick={copyPromo}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 14,
-                      border: "1px solid rgba(192,92,255,0.28)",
-                      background: "linear-gradient(90deg, rgba(192,92,255,0.16), rgba(109,214,255,0.14))",
-                      cursor: "pointer",
-                      animation: "glow 1.4s ease-in-out infinite"
-                    }}
-                    title="Скопировать промокод"
-                  >
-                    {promo} · Скопировать
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    try {
+                      localStorage.removeItem("bot_started");
+                      setBotStartedHint(false);
+                      setToast("Сбросили шаг 2");
+                    } catch {
+                      setToast("Не вышло сбросить шаг 2: доступ к хранилищу запрещён.");
+                    }
+                  }}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(27,27,31,0.12)",
+                    background: "rgba(255,255,255,0.65)",
+                    boxShadow: "var(--shadow2)",
+                    cursor: "pointer"
+                  }}
+                >
+                  Сброс шага 2
+                </button>
               </div>
 
               <div style={{
