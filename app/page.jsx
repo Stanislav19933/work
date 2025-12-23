@@ -109,6 +109,10 @@ export default function Page() {
 
   const r = useMemo(() => checkWinner(board), [board]);
 
+  const hasTgCookie = () => {
+    return typeof document !== "undefined" && document.cookie.includes("tg_uid=");
+  };
+
   // Показываем всплывашки коротко
   useEffect(() => {
     if (!toast) return;
@@ -137,6 +141,7 @@ export default function Page() {
         setConnected(true);
         setBotStarted(true); // WebApp запускается после Start
         setStatus("Подключено. Можно играть!");
+        try { localStorage.setItem("bot_started", "1"); } catch { /* ignore */ }
         setToast("Telegram подключён через WebApp.");
       } catch (e) {
         setToast("Не удалось подключить через Telegram WebApp. Открой бота и попробуй снова.");
@@ -148,6 +153,11 @@ export default function Page() {
       setBotStarted(started);
     } catch {
       setBotStarted(false);
+    }
+
+    if (hasTgCookie()) {
+      setConnected(true);
+      setStatus("Подключено. Можно играть!");
     }
 
     initWebApp();
@@ -258,6 +268,8 @@ export default function Page() {
     try {
       localStorage.setItem("bot_started", "1");
       setBotStarted(true);
+      setStatus("Открываю бота... Подтверди запуск в Telegram.");
+      setConnected(hasTgCookie());
     } catch {
       setBotStarted(true);
     }
@@ -309,10 +321,8 @@ export default function Page() {
   }
 
   const connectedText = connected
-    ? botStarted
-      ? "Telegram подключён через WebApp. Бот может писать."
-      : "Открой бота и нажми Start"
-    : "Открой бота через кнопку ниже (WebApp)";
+    ? "Telegram подключён. Бот сможет прислать результат."
+    : "Открой бота через кнопку ниже, Telegram сам подтвердит подключение.";
 
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 18, background: "radial-gradient(900px 700px at 20% 10%, rgba(192, 92, 255, 0.18), transparent 60%), radial-gradient(900px 700px at 80% 20%, rgba(109, 214, 255, 0.20), transparent 60%), radial-gradient(900px 700px at 60% 85%, rgba(255, 77, 109, 0.14), transparent 60%), linear-gradient(180deg, #0b1021, #0c1429)" }}>
@@ -419,7 +429,7 @@ export default function Page() {
         <div style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 22, boxShadow: "0 15px 60px rgba(0,0,0,0.35)", padding: 18, backdropFilter: "blur(12px)", color: "#f2f5ff", display: "grid", gap: 12, alignSelf: "start" }}>
           <div style={{ fontSize: 18, fontWeight: 760 }}>Подключение через Bot WebApp</div>
           <div style={{ color: "rgba(255,255,255,0.75)", lineHeight: 1.5 }}>
-            Открой бота в Telegram и нажми Start. WebApp передаст твой chat_id — никаких номеров и СМС.
+            Открой бота в Telegram. WebApp сам передаст данные — никаких номеров и СМС.
           </div>
 
           <div style={{ display: "grid", gap: 10, padding: 14, borderRadius: 18, border: "1px solid rgba(255,255,255,0.18)", background: "linear-gradient(135deg, rgba(192,92,255,0.18), rgba(109,214,255,0.16))", boxShadow: "0 14px 35px rgba(0,0,0,0.28)" }}>
@@ -433,7 +443,7 @@ export default function Page() {
             >
               Открыть бота
             </button>
-            <div style={{ fontWeight: 700, color: "#120b1f" }}>Шаг 2. Нажми Start</div>
+            <div style={{ fontWeight: 700, color: "#120b1f" }}>Шаг 2. Подтверди запуск</div>
             <div style={{ color: "rgba(15,12,30,0.8)", fontSize: 13 }}>
               Если кнопка не сработала, открой вручную: <a href={`https://t.me/${BOT_USERNAME}?start=play`} target="_blank" rel="noreferrer" style={{ color: "#120b1f", fontWeight: 760 }}>@{BOT_USERNAME}</a>
             </div>
@@ -467,11 +477,11 @@ export default function Page() {
             </div>
           </div>
 
-          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.4 }}>
-            Совсем по-дружески: Telegram всё равно требует, чтобы пользователь один раз открыл бота. Мы открываем его автоматически.
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.4 }}>
+              После запуска внутри Telegram статус подключения станет зелёным, и бот сможет писать.
+            </div>
           </div>
         </div>
-      </div>
 
       {toast && (
         <div style={{ position: "fixed", bottom: 18, left: "50%", transform: "translateX(-50%)", padding: "10px 14px", borderRadius: 14, background: "rgba(15,15,20,0.9)", color: "white", boxShadow: "0 10px 30px rgba(0,0,0,0.35)", animation: "pop 120ms ease-out", zIndex: 60 }}>
