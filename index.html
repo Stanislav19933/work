@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Тёплые крестики-нолики</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div class="hero__text">
+        <p class="eyebrow">Настроение для тебя</p>
+        <h1>Крестики-нолики с подарком</h1>
+        <p class="lede">Выиграй партию — и я пришлю тебе нежный промокод в Telegram. Проигрыш — это всего лишь повод сыграть ещё раз.</p>
+        <div class="cta-row">
+          <a class="button button--primary" id="openBot" target="_blank" rel="noreferrer" href="https://t.me/cool_woman_bot?start=webapp">
+            Открыть Telegram бота
+          </a>
+          <button class="button button--ghost" id="refreshTelegram">Я уже в Telegram</button>
+        </div>
+        <p class="helper">Чтобы я знала, куда отправить подарок, открой игру через кнопку бота внутри Telegram.</p>
+        <div class="status" id="telegramStatus">Пробую подружиться с Telegram...</div>
+      </div>
+      <div class="hero__card">
+        <p class="tag">Без регистрации и кода</p>
+        <p class="card-title">Ласковые сообщения
+          <span>и музыка кликов, чтобы ты расслабилась.</span></p>
+        <ul class="card-list">
+          <li>Поддержка в каждом сообщении</li>
+          <li>Пастельные цвета и аккуратные градиенты</li>
+          <li>Мгновенная отправка результата</li>
+        </ul>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">Игровая комната</p>
+            <h2>Сыграем?</h2>
+          </div>
+          <div class="mood">🌸 Всё для тебя, играй в своём темпе</div>
+        </div>
+        <div class="grid-wrap">
+          <div class="board" id="board">
+            <button class="cell" data-index="0"></button>
+            <button class="cell" data-index="1"></button>
+            <button class="cell" data-index="2"></button>
+            <button class="cell" data-index="3"></button>
+            <button class="cell" data-index="4"></button>
+            <button class="cell" data-index="5"></button>
+            <button class="cell" data-index="6"></button>
+            <button class="cell" data-index="7"></button>
+            <button class="cell" data-index="8"></button>
+          </div>
+          <div class="sidebar">
+            <div class="pill" id="turnLabel">Твой ход: ставь крестик</div>
+            <p class="helper" id="instruction">Если Telegram не подключился, нажми «Я уже в Telegram» после открытия ссылки.</p>
+            <div class="note">
+              <p class="note__title">Как получаешь подарок</p>
+              <ol>
+                <li>Открой игру через бота.</li>
+                <li>Мы узнаем твой chat_id автоматически.</li>
+                <li>Победа — и я отправлю промокод из 5 цифр.</li>
+                <li>Не вышло — поддержу и предложу реванш.</li>
+              </ol>
+            </div>
+            <div class="actions">
+              <button class="button button--secondary" id="restart">Начать заново</button>
+            </div>
+            <div class="toast" id="toast" role="status" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="result" id="result">
+      <div class="result__card">
+        <p class="result__eyebrow" id="resultEyebrow">Молодец!</p>
+        <h3 class="result__title" id="resultTitle">Ты выиграла!</h3>
+        <p class="result__text" id="resultText">Сейчас пришлю тебе промокод в Telegram.</p>
+        <button class="button button--primary" id="playAgain">Сыграть ещё</button>
+      </div>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
