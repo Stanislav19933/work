@@ -43,5 +43,6 @@ android {
 }
 
 dependencies {
+    implementation("androidx.core:core:1.15.0")
     implementation("com.alphacephei:vosk-android:0.3.75")
 }
