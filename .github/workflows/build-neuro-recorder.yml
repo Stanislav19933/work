@@ -37,6 +37,14 @@ jobs:
         with:
           gradle-version: "8.13"
 
+      - name: Install Android native tools
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" "cmake;3.22.1"
+
+      - name: Fetch pinned whisper.cpp
+        run: |
+          git clone --depth 1 --branch v1.7.6 https://github.com/ggml-org/whisper.cpp.git neuro-recorder/app/src/main/cpp/whisper.cpp
+
       - name: Build debug APK
         working-directory: neuro-recorder
         run: gradle --no-daemon clean assembleDebug
