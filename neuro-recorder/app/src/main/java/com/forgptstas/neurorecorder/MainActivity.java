@@ -15,6 +15,8 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.core.content.FileProvider;
+
 import java.io.File;
 
 public final class MainActivity extends Activity {
@@ -71,7 +73,6 @@ public final class MainActivity extends Activity {
                 ensurePermissionsAndStart();
             }
         });
-
         shareButton.setOnClickListener(view -> shareLastRecording());
 
         lastRecordingPath = getPreferences(MODE_PRIVATE).getString("last_recording_path", null);
@@ -124,7 +125,7 @@ public final class MainActivity extends Activity {
                 startService(intent);
             }
         } catch (Exception exception) {
-            Toast.makeText(this, "Не удалось запустить запись: " + exception.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Не удалось выполнить команду: " + exception.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
@@ -158,7 +159,7 @@ public final class MainActivity extends Activity {
             return;
         }
 
-        Uri uri = NeuroRecorderFileProvider.getUriForFile(this, file);
+        Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".files", file);
         Intent share = new Intent(Intent.ACTION_SEND)
                 .setType("audio/mp4")
                 .putExtra(Intent.EXTRA_STREAM, uri)
