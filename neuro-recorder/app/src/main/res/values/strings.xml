@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">НейроДиктофон</string>
+    <string name="status_preparing">Подготовка…</string>
+    <string name="status_ready">Готово к записи</string>
+    <string name="status_recording">Идёт запись. Можно заблокировать экран.</string>
+    <string name="start_recording">Начать запись</string>
+    <string name="stop_recording">Остановить</string>
+    <string name="share_text">Поделиться последней записью</string>
+    <string name="share_recording">Поделиться записью</string>
+    <string name="transcript_title">Последняя запись</string>
+    <string name="summary_title">Расшифровка и саммари</string>
+    <string name="empty_transcript">После записи здесь появятся имя файла и папка хранения.</string>
+    <string name="empty_summary">Офлайн-расшифровка будет подключена в следующей версии.</string>
+    <string name="recording_saved">Файл: %1$s\nПапка: %2$s</string>
+    <string name="summary_next_version">Аудиозапись сохранена локально. Расшифровка и определение говорящих пока не подключены.</string>
+    <string name="recording_not_found">Файл записи не найден.</string>
+    <string name="permission_required">Для записи нужен доступ к микрофону и уведомлениям.</string>
+    <string name="notification_channel">Запись разговоров</string>
+    <string name="notification_channel_description">Уведомление во время фоновой записи</string>
+    <string name="notification_title">НейроДиктофон записывает</string>
+    <string name="notification_text">Нажмите, чтобы вернуться в приложение.</string>
+    <string name="consent_notice">Записывайте разговор только с согласия участников.</string>
+</resources>
