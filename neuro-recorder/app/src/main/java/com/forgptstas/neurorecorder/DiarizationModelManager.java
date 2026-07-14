@@ -7,24 +7,22 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 
 public final class DiarizationModelManager {
     public interface ProgressListener {
         void onProgress(String modelName, int percent);
     }
 
-    private static final String SEGMENTATION_URL =
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/model.int8.onnx";
-    private static final String EMBEDDING_URL =
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx";
+    private static final String SEGMENTATION_ASSET = "diarization/model.int8.onnx";
+    private static final String EMBEDDING_ASSET = "diarization/nemo_en_titanet_small.onnx";
 
+    private final Context context;
     private final File directory;
     private final File segmentationModel;
     private final File embeddingModel;
 
     public DiarizationModelManager(Context context) {
+        this.context = context.getApplicationContext();
         directory = new File(context.getFilesDir(), "diarization-models");
         segmentationModel = new File(directory, "pyannote-segmentation-3.0-int8.onnx");
         embeddingModel = new File(directory, "nemo-titanet-small.onnx");
@@ -46,12 +44,12 @@ public final class DiarizationModelManager {
         if (!directory.exists() && !directory.mkdirs()) {
             throw new IllegalStateException("Не удалось создать папку моделей диаризации");
         }
-        ensureModel(SEGMENTATION_URL, segmentationModel, "Сегментация", listener);
-        ensureModel(EMBEDDING_URL, embeddingModel, "Голосовые признаки", listener);
+        copyAssetIfNeeded(SEGMENTATION_ASSET, segmentationModel, "Сегментация", listener);
+        copyAssetIfNeeded(EMBEDDING_ASSET, embeddingModel, "Голосовые признаки", listener);
     }
 
-    private static void ensureModel(
-            String sourceUrl,
+    private void copyAssetIfNeeded(
+            String assetPath,
             File target,
             String displayName,
             ProgressListener listener
@@ -60,57 +58,44 @@ public final class DiarizationModelManager {
             return;
         }
 
-        File temporary = new File(target.getParentFile(), target.getName() + ".download");
+        File temporary = new File(target.getParentFile(), target.getName() + ".copying");
         if (temporary.exists() && !temporary.delete()) {
-            throw new IllegalStateException("Не удалось очистить незавершённую загрузку модели");
+            throw new IllegalStateException("Не удалось очистить временный файл модели");
         }
 
-        HttpURLConnection connection = (HttpURLConnection) new URL(sourceUrl).openConnection();
-        connection.setConnectTimeout(20_000);
-        connection.setReadTimeout(60_000);
-        connection.setInstanceFollowRedirects(true);
-        connection.setRequestProperty("User-Agent", "NeuroRecorder/0.3");
-
-        try {
-            int status = connection.getResponseCode();
-            if (status < 200 || status >= 300) {
-                throw new IllegalStateException("Сервер модели вернул HTTP " + status);
-            }
-
-            long total = connection.getContentLengthLong();
-            try (InputStream input = new BufferedInputStream(connection.getInputStream());
-                 BufferedOutputStream output = new BufferedOutputStream(new FileOutputStream(temporary))) {
-                byte[] buffer = new byte[64 * 1024];
-                long downloaded = 0;
-                int lastPercent = -1;
-                int count;
-                while ((count = input.read(buffer)) >= 0) {
-                    output.write(buffer, 0, count);
-                    downloaded += count;
-                    if (listener != null && total > 0) {
-                        int percent = (int) Math.min(100, downloaded * 100 / total);
-                        if (percent != lastPercent) {
-                            lastPercent = percent;
-                            listener.onProgress(displayName, percent);
-                        }
+        try (InputStream input = new BufferedInputStream(context.getAssets().open(assetPath));
+             BufferedOutputStream output = new BufferedOutputStream(new FileOutputStream(temporary))) {
+            byte[] buffer = new byte[64 * 1024];
+            long copied = 0;
+            int lastReported = -1;
+            int count;
+            while ((count = input.read(buffer)) >= 0) {
+                output.write(buffer, 0, count);
+                copied += count;
+                if (listener != null) {
+                    int progressStep = (int) Math.min(99, copied / (1024 * 1024));
+                    if (progressStep != lastReported) {
+                        lastReported = progressStep;
+                        listener.onProgress(displayName, progressStep);
                     }
                 }
             }
+        }
 
-            if (!isUsable(temporary)) {
-                throw new IllegalStateException("Загруженная модель пуста");
-            }
-            if (target.exists() && !target.delete()) {
-                throw new IllegalStateException("Не удалось заменить старую модель");
-            }
-            if (!temporary.renameTo(target)) {
-                throw new IllegalStateException("Не удалось сохранить модель");
-            }
-        } finally {
-            connection.disconnect();
-            if (temporary.exists() && !target.exists()) {
-                temporary.delete();
-            }
+        if (!isUsable(temporary)) {
+            temporary.delete();
+            throw new IllegalStateException("Встроенная модель диаризации повреждена");
+        }
+        if (target.exists() && !target.delete()) {
+            temporary.delete();
+            throw new IllegalStateException("Не удалось заменить старую модель");
+        }
+        if (!temporary.renameTo(target)) {
+            temporary.delete();
+            throw new IllegalStateException("Не удалось сохранить модель диаризации");
+        }
+        if (listener != null) {
+            listener.onProgress(displayName, 100);
         }
     }
 
