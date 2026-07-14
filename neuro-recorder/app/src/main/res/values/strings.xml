@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">НейроДиктофон</string>
+    <string name="status_preparing">Подготовка офлайн-моделей…</string>
+    <string name="status_ready">Готово к записи</string>
+    <string name="start_recording">Начать запись</string>
+    <string name="stop_recording">Остановить</string>
+    <string name="share_text">Поделиться текстом</string>
+    <string name="transcript_title">Расшифровка</string>
+    <string name="summary_title">Саммари</string>
+    <string name="empty_transcript">Здесь появится текст разговора.</string>
+    <string name="empty_summary">После разговора приложение выделит важные фразы, решения и задачи.</string>
+    <string name="consent_notice">Записывайте разговор только с согласия участников.</string>
+</resources>
