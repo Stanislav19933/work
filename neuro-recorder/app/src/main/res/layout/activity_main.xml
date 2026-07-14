@@ -38,58 +38,32 @@
             android:textAllCaps="false"
             android:textSize="17sp" />
 
-        <Button
-            android:id="@+id/shareButton"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginTop="8dp"
-            android:enabled="false"
-            android:text="@string/share_text"
-            android:textAllCaps="false" />
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:text="@string/transcript_title"
+            android:layout_marginTop="24dp"
+            android:text="@string/archive_title"
             android:textColor="#111827"
             android:textSize="20sp"
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/transcriptText"
+            android:id="@+id/archiveEmptyText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="10dp"
             android:background="#FFFFFF"
-            android:minHeight="170dp"
             android:padding="16dp"
-            android:text="@string/empty_transcript"
-            android:textColor="#1F2937"
-            android:textIsSelectable="true"
-            android:textSize="16sp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:text="@string/summary_title"
-            android:textColor="#111827"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/summaryText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="#FFFFFF"
-            android:minHeight="140dp"
-            android:padding="16dp"
-            android:text="@string/empty_summary"
-            android:textColor="#1F2937"
-            android:textIsSelectable="true"
+            android:text="@string/archive_empty"
+            android:textColor="#4B5563"
             android:textSize="15sp" />
+
+        <LinearLayout
+            android:id="@+id/archiveContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="vertical" />
 
         <TextView
             android:layout_width="match_parent"
