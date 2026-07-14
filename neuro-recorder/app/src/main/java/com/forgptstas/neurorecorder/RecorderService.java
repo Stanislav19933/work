@@ -5,14 +5,20 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.media.MediaRecorder;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.IBinder;
+import android.provider.MediaStore;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -24,7 +30,8 @@ public final class RecorderService extends Service {
     public static final String ACTION_STATE = "com.forgptstas.neurorecorder.action.STATE";
 
     public static final String EXTRA_RECORDING = "recording";
-    public static final String EXTRA_FILE_PATH = "file_path";
+    public static final String EXTRA_FILE_URI = "file_uri";
+    public static final String EXTRA_FILE_NAME = "file_name";
     public static final String EXTRA_ERROR = "error";
 
     private static final String CHANNEL_ID = "neuro_recorder_recording";
@@ -32,7 +39,9 @@ public final class RecorderService extends Service {
 
     private MediaRecorder mediaRecorder;
     private boolean recording;
-    private String currentFilePath;
+    private File temporaryFile;
+    private String lastFileUri;
+    private String lastFileName;
 
     @Override
     public void onCreate() {
@@ -61,22 +70,17 @@ public final class RecorderService extends Service {
             return;
         }
 
-        File directory = getExternalFilesDir(Environment.DIRECTORY_MUSIC);
-        if (directory == null) {
-            broadcastState("Не удалось открыть папку для записей.");
-            stopSelf();
-            return;
-        }
-
-        if (!directory.exists() && !directory.mkdirs()) {
-            broadcastState("Не удалось создать папку для записей.");
+        File cacheDirectory = new File(getCacheDir(), "recordings");
+        if (!cacheDirectory.exists() && !cacheDirectory.mkdirs()) {
+            broadcastState("Не удалось создать временную папку для записи.");
             stopSelf();
             return;
         }
 
         String timestamp = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(new Date());
-        File outputFile = new File(directory, "meeting_" + timestamp + ".m4a");
-        currentFilePath = outputFile.getAbsolutePath();
+        lastFileName = "meeting_" + timestamp + ".m4a";
+        temporaryFile = new File(cacheDirectory, lastFileName);
+        lastFileUri = null;
 
         try {
             mediaRecorder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -87,7 +91,7 @@ public final class RecorderService extends Service {
             mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
             mediaRecorder.setAudioEncodingBitRate(128_000);
             mediaRecorder.setAudioSamplingRate(44_100);
-            mediaRecorder.setOutputFile(currentFilePath);
+            mediaRecorder.setOutputFile(temporaryFile.getAbsolutePath());
             mediaRecorder.prepare();
             mediaRecorder.start();
 
@@ -96,7 +100,7 @@ public final class RecorderService extends Service {
             broadcastState(null);
         } catch (IOException | RuntimeException exception) {
             releaseRecorder();
-            deleteEmptyOutput();
+            deleteTemporaryFile();
             broadcastState("Ошибка записи: " + safeMessage(exception));
             stopSelf();
         }
@@ -114,15 +118,66 @@ public final class RecorderService extends Service {
             mediaRecorder.stop();
         } catch (RuntimeException exception) {
             error = "Запись получилась слишком короткой или повреждена.";
-            deleteEmptyOutput();
         } finally {
             recording = false;
             releaseRecorder();
             stopForeground(STOP_FOREGROUND_REMOVE);
         }
 
+        if (error == null) {
+            try {
+                lastFileUri = publishToMusicFolder();
+            } catch (IOException exception) {
+                error = "Не удалось сохранить запись в папку Music/NeuroRecorder: " + safeMessage(exception);
+            }
+        }
+
+        deleteTemporaryFile();
         broadcastState(error);
         stopSelf();
+    }
+
+    private String publishToMusicFolder() throws IOException {
+        if (temporaryFile == null || !temporaryFile.isFile() || temporaryFile.length() == 0) {
+            throw new IOException("временный аудиофайл отсутствует");
+        }
+
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Audio.Media.DISPLAY_NAME, lastFileName);
+        values.put(MediaStore.Audio.Media.MIME_TYPE, "audio/mp4");
+        values.put(MediaStore.Audio.Media.RELATIVE_PATH, Environment.DIRECTORY_MUSIC + "/NeuroRecorder");
+        values.put(MediaStore.Audio.Media.IS_PENDING, 1);
+
+        ContentResolver resolver = getContentResolver();
+        Uri uri = resolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values);
+        if (uri == null) {
+            throw new IOException("MediaStore не создал файл");
+        }
+
+        boolean success = false;
+        try (FileInputStream input = new FileInputStream(temporaryFile);
+             OutputStream output = resolver.openOutputStream(uri, "w")) {
+            if (output == null) {
+                throw new IOException("не удалось открыть файл назначения");
+            }
+
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+            output.flush();
+            success = true;
+        } finally {
+            if (!success) {
+                resolver.delete(uri, null, null);
+            }
+        }
+
+        ContentValues readyValues = new ContentValues();
+        readyValues.put(MediaStore.Audio.Media.IS_PENDING, 0);
+        resolver.update(uri, readyValues, null, null);
+        return uri.toString();
     }
 
     private Notification buildNotification() {
@@ -171,7 +226,8 @@ public final class RecorderService extends Service {
         Intent state = new Intent(ACTION_STATE)
                 .setPackage(getPackageName())
                 .putExtra(EXTRA_RECORDING, recording)
-                .putExtra(EXTRA_FILE_PATH, currentFilePath);
+                .putExtra(EXTRA_FILE_URI, lastFileUri)
+                .putExtra(EXTRA_FILE_NAME, lastFileName);
         if (error != null) {
             state.putExtra(EXTRA_ERROR, error);
         }
@@ -190,15 +246,11 @@ public final class RecorderService extends Service {
         mediaRecorder = null;
     }
 
-    private void deleteEmptyOutput() {
-        if (currentFilePath == null) {
-            return;
+    private void deleteTemporaryFile() {
+        if (temporaryFile != null && temporaryFile.exists()) {
+            temporaryFile.delete();
         }
-        File file = new File(currentFilePath);
-        if (file.exists() && file.length() < 1024) {
-            file.delete();
-            currentFilePath = null;
-        }
+        temporaryFile = null;
     }
 
     private static String safeMessage(Exception exception) {
@@ -212,6 +264,7 @@ public final class RecorderService extends Service {
             stopRecording();
         } else {
             releaseRecorder();
+            deleteTemporaryFile();
         }
         super.onDestroy();
     }
