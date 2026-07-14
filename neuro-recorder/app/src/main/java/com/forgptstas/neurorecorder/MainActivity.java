@@ -2,35 +2,72 @@ package com.forgptstas.neurorecorder;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
+import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
+import android.text.InputType;
+import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.core.content.FileProvider;
-
 import java.io.File;
+import java.text.DateFormat;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
 
 public final class MainActivity extends Activity {
     private static final int REQUEST_RECORD_AUDIO = 1001;
     private static final int REQUEST_NOTIFICATIONS = 1002;
 
     private Button recordButton;
-    private Button shareButton;
     private TextView statusText;
-    private TextView transcriptText;
-    private TextView summaryText;
+    private TextView archiveEmptyText;
+    private LinearLayout archiveContainer;
+    private RecordingRepository recordingRepository;
+    private TranscriptStore transcriptStore;
+    private WhisperModelManager modelManager;
+    private WhisperEngine whisperEngine;
 
     private boolean recording;
-    private String lastRecordingPath;
+    private MediaPlayer mediaPlayer;
+    private Uri playingUri;
+    private Button playingButton;
+    private SeekBar playingSeekBar;
+    private final Handler playbackHandler = new Handler(Looper.getMainLooper());
+
+    private final Runnable playbackProgress = new Runnable() {
+        @Override
+        public void run() {
+            if (mediaPlayer != null && playingSeekBar != null) {
+                try {
+                    playingSeekBar.setMax(Math.max(mediaPlayer.getDuration(), 1));
+                    playingSeekBar.setProgress(mediaPlayer.getCurrentPosition());
+                    if (mediaPlayer.isPlaying()) {
+                        playbackHandler.postDelayed(this, 300);
+                    }
+                } catch (IllegalStateException ignored) {
+                    stopPlayback();
+                }
+            }
+        }
+    };
 
     private final BroadcastReceiver recorderReceiver = new BroadcastReceiver() {
         @Override
@@ -38,20 +75,15 @@ public final class MainActivity extends Activity {
             if (!RecorderService.ACTION_STATE.equals(intent.getAction())) {
                 return;
             }
-
             recording = intent.getBooleanExtra(RecorderService.EXTRA_RECORDING, false);
-            String path = intent.getStringExtra(RecorderService.EXTRA_FILE_PATH);
             String error = intent.getStringExtra(RecorderService.EXTRA_ERROR);
-
-            if (path != null && !path.isBlank()) {
-                lastRecordingPath = path;
-            }
-
             if (error != null && !error.isBlank()) {
                 Toast.makeText(MainActivity.this, error, Toast.LENGTH_LONG).show();
             }
-
-            refreshUi();
+            refreshRecordingUi();
+            if (!recording) {
+                loadArchive();
+            }
         }
     };
 
@@ -61,22 +93,24 @@ public final class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
 
         recordButton = findViewById(R.id.recordButton);
-        shareButton = findViewById(R.id.shareButton);
         statusText = findViewById(R.id.statusText);
-        transcriptText = findViewById(R.id.transcriptText);
-        summaryText = findViewById(R.id.summaryText);
+        archiveEmptyText = findViewById(R.id.archiveEmptyText);
+        archiveContainer = findViewById(R.id.archiveContainer);
+        recordingRepository = new RecordingRepository(this);
+        transcriptStore = new TranscriptStore(this);
+        modelManager = new WhisperModelManager(this);
+        whisperEngine = new WhisperEngine();
 
         recordButton.setOnClickListener(view -> {
             if (recording) {
-                stopRecording();
+                sendCommand(RecorderService.ACTION_STOP);
             } else {
                 ensurePermissionsAndStart();
             }
         });
-        shareButton.setOnClickListener(view -> shareLastRecording());
 
-        lastRecordingPath = getPreferences(MODE_PRIVATE).getString("last_recording_path", null);
-        refreshUi();
+        refreshRecordingUi();
+        loadArchive();
     }
 
     @Override
@@ -89,6 +123,7 @@ public final class MainActivity extends Activity {
             registerReceiver(recorderReceiver, filter);
         }
         sendCommand(RecorderService.ACTION_QUERY);
+        loadArchive();
     }
 
     @Override
@@ -97,23 +132,24 @@ public final class MainActivity extends Activity {
         super.onStop();
     }
 
+    @Override
+    protected void onDestroy() {
+        stopPlayback();
+        super.onDestroy();
+    }
+
     private void ensurePermissionsAndStart() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQUEST_RECORD_AUDIO);
             return;
         }
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
             return;
         }
-
+        stopPlayback();
         sendCommand(RecorderService.ACTION_START);
-    }
-
-    private void stopRecording() {
-        sendCommand(RecorderService.ACTION_STOP);
     }
 
     private void sendCommand(String action) {
@@ -129,58 +165,300 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void refreshUi() {
+    private void refreshRecordingUi() {
         recordButton.setEnabled(true);
         recordButton.setText(recording ? R.string.stop_recording : R.string.start_recording);
         statusText.setText(recording ? R.string.status_recording : R.string.status_ready);
+    }
 
-        boolean hasRecording = lastRecordingPath != null && new File(lastRecordingPath).isFile();
-        shareButton.setEnabled(hasRecording && !recording);
+    private void loadArchive() {
+        new Thread(() -> {
+            List<RecordingItem> items = recordingRepository.loadAll();
+            runOnUiThread(() -> renderArchive(items));
+        }, "recording-archive-loader").start();
+    }
 
-        if (hasRecording) {
-            getPreferences(MODE_PRIVATE).edit().putString("last_recording_path", lastRecordingPath).apply();
-            File file = new File(lastRecordingPath);
-            transcriptText.setText(getString(R.string.recording_saved, file.getName(), file.getParent()));
-            summaryText.setText(R.string.summary_next_version);
-        } else {
-            transcriptText.setText(R.string.empty_transcript);
-            summaryText.setText(R.string.empty_summary);
+    private void renderArchive(List<RecordingItem> items) {
+        archiveContainer.removeAllViews();
+        archiveEmptyText.setVisibility(items.isEmpty() ? View.VISIBLE : View.GONE);
+        for (RecordingItem item : items) {
+            archiveContainer.addView(createRecordingCard(item));
         }
     }
 
-    private void shareLastRecording() {
-        if (lastRecordingPath == null) {
+    private View createRecordingCard(RecordingItem item) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(16), dp(14), dp(16), dp(14));
+        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        cardParams.bottomMargin = dp(10);
+        card.setLayoutParams(cardParams);
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(Color.WHITE);
+        background.setCornerRadius(dp(12));
+        card.setBackground(background);
+
+        TextView title = new TextView(this);
+        title.setText(item.getName());
+        title.setTextColor(Color.rgb(17, 24, 39));
+        title.setTextSize(17);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        card.addView(title);
+
+        TextView metadata = new TextView(this);
+        metadata.setText(formatMetadata(item));
+        metadata.setTextColor(Color.rgb(75, 85, 99));
+        metadata.setTextSize(13);
+        metadata.setPadding(0, dp(5), 0, dp(8));
+        card.addView(metadata);
+
+        SeekBar seekBar = new SeekBar(this);
+        seekBar.setMax((int) Math.max(item.getDurationMillis(), 1));
+        card.addView(seekBar);
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        Button playButton = compactButton(getString(R.string.play));
+        Button transcribeButton = compactButton(getString(R.string.transcribe));
+        Button renameButton = compactButton(getString(R.string.rename));
+        Button shareButton = compactButton(getString(R.string.share));
+        actions.addView(playButton);
+        actions.addView(transcribeButton);
+        actions.addView(renameButton);
+        actions.addView(shareButton);
+        card.addView(actions);
+
+        Button deleteButton = compactButton(getString(R.string.delete));
+        LinearLayout deleteRow = new LinearLayout(this);
+        deleteRow.addView(deleteButton);
+        card.addView(deleteRow);
+
+        TextView transcriptView = new TextView(this);
+        transcriptView.setTextColor(Color.rgb(31, 41, 55));
+        transcriptView.setTextSize(14);
+        transcriptView.setPadding(0, dp(10), 0, 0);
+        String savedTranscript = transcriptStore.load(item);
+        if (savedTranscript == null || savedTranscript.isBlank()) {
+            transcriptView.setVisibility(View.GONE);
+        } else {
+            transcriptView.setText(savedTranscript);
+            transcriptView.setVisibility(View.VISIBLE);
+            transcribeButton.setText(R.string.transcribe_again);
+        }
+        card.addView(transcriptView);
+
+        playButton.setOnClickListener(view -> togglePlayback(item, playButton, seekBar));
+        transcribeButton.setOnClickListener(view -> transcribe(item, transcribeButton, transcriptView));
+        renameButton.setOnClickListener(view -> showRenameDialog(item));
+        shareButton.setOnClickListener(view -> shareRecording(item));
+        deleteButton.setOnClickListener(view -> confirmDelete(item));
+
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                if (fromUser && mediaPlayer != null && item.getUri().equals(playingUri)) {
+                    try {
+                        mediaPlayer.seekTo(progress);
+                    } catch (IllegalStateException ignored) {
+                        stopPlayback();
+                    }
+                }
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) { }
+        });
+        return card;
+    }
+
+    private void transcribe(RecordingItem item, Button button, TextView transcriptView) {
+        stopPlayback();
+        button.setEnabled(false);
+        button.setText(modelManager.isReady() ? R.string.transcribing : R.string.model_downloading);
+        transcriptView.setVisibility(View.VISIBLE);
+        transcriptView.setText(modelManager.isReady() ? R.string.audio_preparing : R.string.model_download_first_time);
+
+        new Thread(() -> {
+            try {
+                File model = modelManager.ensureModel(percent -> runOnUiThread(() -> {
+                    button.setText(getString(R.string.model_download_progress, percent));
+                    transcriptView.setText(getString(R.string.model_download_progress_long, percent));
+                }));
+                runOnUiThread(() -> {
+                    button.setText(R.string.transcribing);
+                    transcriptView.setText(R.string.audio_preparing);
+                });
+                float[] samples = AudioDecoder.decodeToMono16Khz(this, item.getUri());
+                runOnUiThread(() -> transcriptView.setText(R.string.whisper_processing));
+                String text = whisperEngine.transcribe(model, samples, "ru");
+                transcriptStore.save(item, text);
+                runOnUiThread(() -> {
+                    transcriptView.setText(text);
+                    button.setEnabled(true);
+                    button.setText(R.string.transcribe_again);
+                });
+            } catch (Exception exception) {
+                runOnUiThread(() -> {
+                    button.setEnabled(true);
+                    button.setText(R.string.transcribe);
+                    transcriptView.setText("Ошибка расшифровки: " + safeMessage(exception));
+                });
+            }
+        }, "whisper-transcription").start();
+    }
+
+    private Button compactButton(String text) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextAllCaps(false);
+        button.setTextSize(11);
+        button.setMinHeight(0);
+        button.setMinimumHeight(0);
+        button.setPadding(dp(6), dp(5), dp(6), dp(5));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        params.setMargins(dp(2), 0, dp(2), 0);
+        button.setLayoutParams(params);
+        return button;
+    }
+
+    private void togglePlayback(RecordingItem item, Button button, SeekBar seekBar) {
+        if (mediaPlayer != null && item.getUri().equals(playingUri)) {
+            if (mediaPlayer.isPlaying()) {
+                mediaPlayer.pause();
+                button.setText(R.string.play);
+                playbackHandler.removeCallbacks(playbackProgress);
+            } else {
+                mediaPlayer.start();
+                button.setText(R.string.pause);
+                playbackHandler.post(playbackProgress);
+            }
             return;
         }
-
-        File file = new File(lastRecordingPath);
-        if (!file.isFile()) {
-            Toast.makeText(this, R.string.recording_not_found, Toast.LENGTH_LONG).show();
-            return;
+        stopPlayback();
+        try {
+            mediaPlayer = new MediaPlayer();
+            mediaPlayer.setDataSource(this, item.getUri());
+            mediaPlayer.setOnPreparedListener(player -> {
+                seekBar.setMax(Math.max(player.getDuration(), 1));
+                player.start();
+                button.setText(R.string.pause);
+                playbackHandler.post(playbackProgress);
+            });
+            mediaPlayer.setOnCompletionListener(player -> stopPlayback());
+            mediaPlayer.setOnErrorListener((player, what, extra) -> {
+                Toast.makeText(this, R.string.playback_error, Toast.LENGTH_LONG).show();
+                stopPlayback();
+                return true;
+            });
+            playingUri = item.getUri();
+            playingButton = button;
+            playingSeekBar = seekBar;
+            mediaPlayer.prepareAsync();
+        } catch (Exception exception) {
+            stopPlayback();
+            Toast.makeText(this, "Не удалось открыть запись: " + safeMessage(exception), Toast.LENGTH_LONG).show();
         }
+    }
 
-        Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".files", file);
+    private void stopPlayback() {
+        playbackHandler.removeCallbacks(playbackProgress);
+        if (mediaPlayer != null) {
+            try { mediaPlayer.stop(); } catch (IllegalStateException ignored) { }
+            mediaPlayer.release();
+        }
+        if (playingButton != null) playingButton.setText(R.string.play);
+        if (playingSeekBar != null) playingSeekBar.setProgress(0);
+        mediaPlayer = null;
+        playingUri = null;
+        playingButton = null;
+        playingSeekBar = null;
+    }
+
+    private void showRenameDialog(RecordingItem item) {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_TEXT);
+        input.setText(stripExtension(item.getName()));
+        input.selectAll();
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.rename_recording)
+                .setView(input)
+                .setPositiveButton(R.string.save, (dialog, which) -> {
+                    stopPlayback();
+                    boolean renamed = recordingRepository.rename(item, input.getText().toString());
+                    Toast.makeText(this, renamed ? R.string.rename_success : R.string.rename_error, Toast.LENGTH_SHORT).show();
+                    loadArchive();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void confirmDelete(RecordingItem item) {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.delete_recording)
+                .setMessage(getString(R.string.delete_confirmation, item.getName()))
+                .setPositiveButton(R.string.delete, (dialog, which) -> {
+                    stopPlayback();
+                    boolean deleted = recordingRepository.delete(item);
+                    if (deleted) transcriptStore.delete(item);
+                    Toast.makeText(this, deleted ? R.string.delete_success : R.string.delete_error, Toast.LENGTH_SHORT).show();
+                    loadArchive();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void shareRecording(RecordingItem item) {
         Intent share = new Intent(Intent.ACTION_SEND)
                 .setType("audio/mp4")
-                .putExtra(Intent.EXTRA_STREAM, uri)
+                .putExtra(Intent.EXTRA_STREAM, item.getUri())
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         startActivity(Intent.createChooser(share, getString(R.string.share_recording)));
+    }
+
+    private String formatMetadata(RecordingItem item) {
+        String date = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                .format(new Date(item.getDateAddedSeconds() * 1000L));
+        return date + "  •  " + formatDuration(item.getDurationMillis()) + "  •  " + formatSize(item.getSizeBytes());
+    }
+
+    private static String formatDuration(long milliseconds) {
+        long totalSeconds = Math.max(milliseconds, 0) / 1000;
+        return String.format(Locale.getDefault(), "%d:%02d", totalSeconds / 60, totalSeconds % 60);
+    }
+
+    private static String formatSize(long bytes) {
+        if (bytes < 1024 * 1024) return String.format(Locale.getDefault(), "%.1f КБ", bytes / 1024.0);
+        return String.format(Locale.getDefault(), "%.1f МБ", bytes / (1024.0 * 1024.0));
+    }
+
+    private static String stripExtension(String name) {
+        int dot = name.lastIndexOf('.');
+        return dot > 0 ? name.substring(0, dot) : name;
+    }
+
+    private static String safeMessage(Exception exception) {
+        String message = exception.getMessage();
+        return message == null || message.isBlank() ? exception.getClass().getSimpleName() : message;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
         if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             ensurePermissionsAndStart();
             return;
         }
-
         Toast.makeText(this, R.string.permission_required, Toast.LENGTH_LONG).show();
         if (requestCode == REQUEST_RECORD_AUDIO && !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)) {
-            Intent settingsIntent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                    .setData(Uri.parse("package:" + getPackageName()));
-            startActivity(settingsIntent);
+            startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.parse("package:" + getPackageName())));
         }
     }
 }
