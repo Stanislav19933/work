@@ -15,10 +15,6 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.core.content.FileProvider;
-
-import java.io.File;
-
 public final class MainActivity extends Activity {
     private static final int REQUEST_RECORD_AUDIO = 1001;
     private static final int REQUEST_NOTIFICATIONS = 1002;
@@ -30,7 +26,8 @@ public final class MainActivity extends Activity {
     private TextView summaryText;
 
     private boolean recording;
-    private String lastRecordingPath;
+    private String lastRecordingUri;
+    private String lastRecordingName;
 
     private final BroadcastReceiver recorderReceiver = new BroadcastReceiver() {
         @Override
@@ -40,11 +37,15 @@ public final class MainActivity extends Activity {
             }
 
             recording = intent.getBooleanExtra(RecorderService.EXTRA_RECORDING, false);
-            String path = intent.getStringExtra(RecorderService.EXTRA_FILE_PATH);
+            String uri = intent.getStringExtra(RecorderService.EXTRA_FILE_URI);
+            String fileName = intent.getStringExtra(RecorderService.EXTRA_FILE_NAME);
             String error = intent.getStringExtra(RecorderService.EXTRA_ERROR);
 
-            if (path != null && !path.isBlank()) {
-                lastRecordingPath = path;
+            if (uri != null && !uri.isBlank()) {
+                lastRecordingUri = uri;
+            }
+            if (fileName != null && !fileName.isBlank()) {
+                lastRecordingName = fileName;
             }
 
             if (error != null && !error.isBlank()) {
@@ -75,7 +76,8 @@ public final class MainActivity extends Activity {
         });
         shareButton.setOnClickListener(view -> shareLastRecording());
 
-        lastRecordingPath = getPreferences(MODE_PRIVATE).getString("last_recording_path", null);
+        lastRecordingUri = getPreferences(MODE_PRIVATE).getString("last_recording_uri", null);
+        lastRecordingName = getPreferences(MODE_PRIVATE).getString("last_recording_name", null);
         refreshUi();
     }
 
@@ -134,13 +136,19 @@ public final class MainActivity extends Activity {
         recordButton.setText(recording ? R.string.stop_recording : R.string.start_recording);
         statusText.setText(recording ? R.string.status_recording : R.string.status_ready);
 
-        boolean hasRecording = lastRecordingPath != null && new File(lastRecordingPath).isFile();
+        boolean hasRecording = lastRecordingUri != null && canReadUri(lastRecordingUri);
         shareButton.setEnabled(hasRecording && !recording);
 
         if (hasRecording) {
-            getPreferences(MODE_PRIVATE).edit().putString("last_recording_path", lastRecordingPath).apply();
-            File file = new File(lastRecordingPath);
-            transcriptText.setText(getString(R.string.recording_saved, file.getName(), file.getParent()));
+            getPreferences(MODE_PRIVATE).edit()
+                    .putString("last_recording_uri", lastRecordingUri)
+                    .putString("last_recording_name", lastRecordingName)
+                    .apply();
+            transcriptText.setText(getString(
+                    R.string.recording_saved,
+                    lastRecordingName == null ? getString(R.string.unknown_recording_name) : lastRecordingName,
+                    "Music/NeuroRecorder"
+            ));
             summaryText.setText(R.string.summary_next_version);
         } else {
             transcriptText.setText(R.string.empty_transcript);
@@ -148,18 +156,24 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void shareLastRecording() {
-        if (lastRecordingPath == null) {
-            return;
+    private boolean canReadUri(String uriString) {
+        try {
+            Uri uri = Uri.parse(uriString);
+            try (android.os.ParcelFileDescriptor descriptor = getContentResolver().openFileDescriptor(uri, "r")) {
+                return descriptor != null;
+            }
+        } catch (Exception ignored) {
+            return false;
         }
+    }
 
-        File file = new File(lastRecordingPath);
-        if (!file.isFile()) {
+    private void shareLastRecording() {
+        if (lastRecordingUri == null || !canReadUri(lastRecordingUri)) {
             Toast.makeText(this, R.string.recording_not_found, Toast.LENGTH_LONG).show();
             return;
         }
 
-        Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".files", file);
+        Uri uri = Uri.parse(lastRecordingUri);
         Intent share = new Intent(Intent.ACTION_SEND)
                 .setType("audio/mp4")
                 .putExtra(Intent.EXTRA_STREAM, uri)
