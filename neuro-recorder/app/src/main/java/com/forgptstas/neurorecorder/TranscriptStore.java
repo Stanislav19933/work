@@ -26,7 +26,7 @@ public final class TranscriptStore {
             return null;
         }
         try {
-            return Files.readString(file.toPath(), StandardCharsets.UTF_8);
+            return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
         } catch (Exception ignored) {
             return null;
         }
