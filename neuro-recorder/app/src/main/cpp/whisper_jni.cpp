@@ -1,4 +1,5 @@
 #include <jni.h>
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <thread>
@@ -36,7 +37,9 @@ Java_com_forgptstas_neurorecorder_WhisperEngine_transcribeNative(
     params.translate = false;
     params.no_context = true;
     params.single_segment = false;
-    params.n_threads = threads > 0 ? threads : std::max(1u, std::thread::hardware_concurrency() / 2);
+    const unsigned int hardwareThreads = std::thread::hardware_concurrency();
+    const int defaultThreads = static_cast<int>(std::max(1u, hardwareThreads / 2u));
+    params.n_threads = threads > 0 ? threads : defaultThreads;
     params.language = lang;
 
     const int result = whisper_full(ctx, params, pcm.data(), static_cast<int>(pcm.size()));
