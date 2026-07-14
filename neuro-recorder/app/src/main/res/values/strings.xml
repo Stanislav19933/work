@@ -13,6 +13,7 @@
     <string name="empty_transcript">После записи здесь появятся имя файла и папка хранения.</string>
     <string name="empty_summary">Офлайн-расшифровка будет подключена в следующей версии.</string>
     <string name="recording_saved">Файл: %1$s\nПапка: %2$s</string>
+    <string name="unknown_recording_name">Аудиозапись</string>
     <string name="summary_next_version">Аудиозапись сохранена локально. Расшифровка и определение говорящих пока не подключены.</string>
     <string name="recording_not_found">Файл записи не найден.</string>
     <string name="permission_required">Для записи нужен доступ к микрофону и уведомлениям.</string>
