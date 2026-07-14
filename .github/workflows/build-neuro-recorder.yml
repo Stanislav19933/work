@@ -7,6 +7,12 @@ on:
     paths:
       - "neuro-recorder/**"
       - ".github/workflows/build-neuro-recorder.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "neuro-recorder/**"
+      - ".github/workflows/build-neuro-recorder.yml"
   workflow_dispatch:
 
 permissions:
