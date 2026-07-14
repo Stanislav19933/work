@@ -10,6 +10,15 @@
     <string name="archive_empty">Записей пока нет. Новые файлы сохраняются в Music/NeuroRecorder.</string>
     <string name="play">Слушать</string>
     <string name="pause">Пауза</string>
+    <string name="transcribe">В текст</string>
+    <string name="transcribe_again">Повторить</string>
+    <string name="transcribing">Распознаю…</string>
+    <string name="model_downloading">Модель…</string>
+    <string name="model_download_first_time">При первом запуске загружается модель Whisper. После этого распознавание работает без интернета.</string>
+    <string name="model_download_progress">Модель %1$d%%</string>
+    <string name="model_download_progress_long">Загрузка модели Whisper: %1$d%%</string>
+    <string name="audio_preparing">Подготовка аудио…</string>
+    <string name="whisper_processing">Whisper распознаёт русский текст…</string>
     <string name="rename">Название</string>
     <string name="share">Отправить</string>
     <string name="delete">Удалить</string>
