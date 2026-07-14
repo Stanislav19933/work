@@ -26,6 +26,7 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
 import java.text.DateFormat;
 import java.util.Date;
 import java.util.List;
@@ -40,6 +41,9 @@ public final class MainActivity extends Activity {
     private TextView archiveEmptyText;
     private LinearLayout archiveContainer;
     private RecordingRepository recordingRepository;
+    private TranscriptStore transcriptStore;
+    private WhisperModelManager modelManager;
+    private WhisperEngine whisperEngine;
 
     private boolean recording;
     private MediaPlayer mediaPlayer;
@@ -71,13 +75,11 @@ public final class MainActivity extends Activity {
             if (!RecorderService.ACTION_STATE.equals(intent.getAction())) {
                 return;
             }
-
             recording = intent.getBooleanExtra(RecorderService.EXTRA_RECORDING, false);
             String error = intent.getStringExtra(RecorderService.EXTRA_ERROR);
             if (error != null && !error.isBlank()) {
                 Toast.makeText(MainActivity.this, error, Toast.LENGTH_LONG).show();
             }
-
             refreshRecordingUi();
             if (!recording) {
                 loadArchive();
@@ -95,6 +97,9 @@ public final class MainActivity extends Activity {
         archiveEmptyText = findViewById(R.id.archiveEmptyText);
         archiveContainer = findViewById(R.id.archiveContainer);
         recordingRepository = new RecordingRepository(this);
+        transcriptStore = new TranscriptStore(this);
+        modelManager = new WhisperModelManager(this);
+        whisperEngine = new WhisperEngine();
 
         recordButton.setOnClickListener(view -> {
             if (recording) {
@@ -138,13 +143,11 @@ public final class MainActivity extends Activity {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQUEST_RECORD_AUDIO);
             return;
         }
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
             return;
         }
-
         stopPlayback();
         sendCommand(RecorderService.ACTION_START);
     }
@@ -193,7 +196,6 @@ public final class MainActivity extends Activity {
         );
         cardParams.bottomMargin = dp(10);
         card.setLayoutParams(cardParams);
-
         GradientDrawable background = new GradientDrawable();
         background.setColor(Color.WHITE);
         background.setCornerRadius(dp(12));
@@ -215,24 +217,41 @@ public final class MainActivity extends Activity {
 
         SeekBar seekBar = new SeekBar(this);
         seekBar.setMax((int) Math.max(item.getDurationMillis(), 1));
-        seekBar.setProgress(0);
         card.addView(seekBar);
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
-
         Button playButton = compactButton(getString(R.string.play));
+        Button transcribeButton = compactButton(getString(R.string.transcribe));
         Button renameButton = compactButton(getString(R.string.rename));
         Button shareButton = compactButton(getString(R.string.share));
-        Button deleteButton = compactButton(getString(R.string.delete));
-
         actions.addView(playButton);
+        actions.addView(transcribeButton);
         actions.addView(renameButton);
         actions.addView(shareButton);
-        actions.addView(deleteButton);
         card.addView(actions);
 
+        Button deleteButton = compactButton(getString(R.string.delete));
+        LinearLayout deleteRow = new LinearLayout(this);
+        deleteRow.addView(deleteButton);
+        card.addView(deleteRow);
+
+        TextView transcriptView = new TextView(this);
+        transcriptView.setTextColor(Color.rgb(31, 41, 55));
+        transcriptView.setTextSize(14);
+        transcriptView.setPadding(0, dp(10), 0, 0);
+        String savedTranscript = transcriptStore.load(item);
+        if (savedTranscript == null || savedTranscript.isBlank()) {
+            transcriptView.setVisibility(View.GONE);
+        } else {
+            transcriptView.setText(savedTranscript);
+            transcriptView.setVisibility(View.VISIBLE);
+            transcribeButton.setText(R.string.transcribe_again);
+        }
+        card.addView(transcriptView);
+
         playButton.setOnClickListener(view -> togglePlayback(item, playButton, seekBar));
+        transcribeButton.setOnClickListener(view -> transcribe(item, transcribeButton, transcriptView));
         renameButton.setOnClickListener(view -> showRenameDialog(item));
         shareButton.setOnClickListener(view -> shareRecording(item));
         deleteButton.setOnClickListener(view -> confirmDelete(item));
@@ -248,27 +267,56 @@ public final class MainActivity extends Activity {
                     }
                 }
             }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar bar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar bar) {
-            }
+            @Override public void onStartTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) { }
         });
-
         return card;
+    }
+
+    private void transcribe(RecordingItem item, Button button, TextView transcriptView) {
+        stopPlayback();
+        button.setEnabled(false);
+        button.setText(modelManager.isReady() ? R.string.transcribing : R.string.model_downloading);
+        transcriptView.setVisibility(View.VISIBLE);
+        transcriptView.setText(modelManager.isReady() ? R.string.audio_preparing : R.string.model_download_first_time);
+
+        new Thread(() -> {
+            try {
+                File model = modelManager.ensureModel(percent -> runOnUiThread(() -> {
+                    button.setText(getString(R.string.model_download_progress, percent));
+                    transcriptView.setText(getString(R.string.model_download_progress_long, percent));
+                }));
+                runOnUiThread(() -> {
+                    button.setText(R.string.transcribing);
+                    transcriptView.setText(R.string.audio_preparing);
+                });
+                float[] samples = AudioDecoder.decodeToMono16Khz(this, item.getUri());
+                runOnUiThread(() -> transcriptView.setText(R.string.whisper_processing));
+                String text = whisperEngine.transcribe(model, samples, "ru");
+                transcriptStore.save(item, text);
+                runOnUiThread(() -> {
+                    transcriptView.setText(text);
+                    button.setEnabled(true);
+                    button.setText(R.string.transcribe_again);
+                });
+            } catch (Exception exception) {
+                runOnUiThread(() -> {
+                    button.setEnabled(true);
+                    button.setText(R.string.transcribe);
+                    transcriptView.setText("Ошибка расшифровки: " + safeMessage(exception));
+                });
+            }
+        }, "whisper-transcription").start();
     }
 
     private Button compactButton(String text) {
         Button button = new Button(this);
         button.setText(text);
         button.setTextAllCaps(false);
-        button.setTextSize(12);
+        button.setTextSize(11);
         button.setMinHeight(0);
         button.setMinimumHeight(0);
-        button.setPadding(dp(8), dp(5), dp(8), dp(5));
+        button.setPadding(dp(6), dp(5), dp(6), dp(5));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         params.setMargins(dp(2), 0, dp(2), 0);
         button.setLayoutParams(params);
@@ -288,7 +336,6 @@ public final class MainActivity extends Activity {
             }
             return;
         }
-
         stopPlayback();
         try {
             mediaPlayer = new MediaPlayer();
@@ -311,25 +358,18 @@ public final class MainActivity extends Activity {
             mediaPlayer.prepareAsync();
         } catch (Exception exception) {
             stopPlayback();
-            Toast.makeText(this, "Не удалось открыть запись: " + exception.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Не удалось открыть запись: " + safeMessage(exception), Toast.LENGTH_LONG).show();
         }
     }
 
     private void stopPlayback() {
         playbackHandler.removeCallbacks(playbackProgress);
         if (mediaPlayer != null) {
-            try {
-                mediaPlayer.stop();
-            } catch (IllegalStateException ignored) {
-            }
+            try { mediaPlayer.stop(); } catch (IllegalStateException ignored) { }
             mediaPlayer.release();
         }
-        if (playingButton != null) {
-            playingButton.setText(R.string.play);
-        }
-        if (playingSeekBar != null) {
-            playingSeekBar.setProgress(0);
-        }
+        if (playingButton != null) playingButton.setText(R.string.play);
+        if (playingSeekBar != null) playingSeekBar.setProgress(0);
         mediaPlayer = null;
         playingUri = null;
         playingButton = null;
@@ -342,7 +382,6 @@ public final class MainActivity extends Activity {
         input.setInputType(InputType.TYPE_CLASS_TEXT);
         input.setText(stripExtension(item.getName()));
         input.selectAll();
-
         new AlertDialog.Builder(this)
                 .setTitle(R.string.rename_recording)
                 .setView(input)
@@ -363,6 +402,7 @@ public final class MainActivity extends Activity {
                 .setPositiveButton(R.string.delete, (dialog, which) -> {
                     stopPlayback();
                     boolean deleted = recordingRepository.delete(item);
+                    if (deleted) transcriptStore.delete(item);
                     Toast.makeText(this, deleted ? R.string.delete_success : R.string.delete_error, Toast.LENGTH_SHORT).show();
                     loadArchive();
                 })
@@ -386,21 +426,22 @@ public final class MainActivity extends Activity {
 
     private static String formatDuration(long milliseconds) {
         long totalSeconds = Math.max(milliseconds, 0) / 1000;
-        long minutes = totalSeconds / 60;
-        long seconds = totalSeconds % 60;
-        return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds);
+        return String.format(Locale.getDefault(), "%d:%02d", totalSeconds / 60, totalSeconds % 60);
     }
 
     private static String formatSize(long bytes) {
-        if (bytes < 1024 * 1024) {
-            return String.format(Locale.getDefault(), "%.1f КБ", bytes / 1024.0);
-        }
+        if (bytes < 1024 * 1024) return String.format(Locale.getDefault(), "%.1f КБ", bytes / 1024.0);
         return String.format(Locale.getDefault(), "%.1f МБ", bytes / (1024.0 * 1024.0));
     }
 
     private static String stripExtension(String name) {
         int dot = name.lastIndexOf('.');
         return dot > 0 ? name.substring(0, dot) : name;
+    }
+
+    private static String safeMessage(Exception exception) {
+        String message = exception.getMessage();
+        return message == null || message.isBlank() ? exception.getClass().getSimpleName() : message;
     }
 
     private int dp(int value) {
@@ -414,12 +455,10 @@ public final class MainActivity extends Activity {
             ensurePermissionsAndStart();
             return;
         }
-
         Toast.makeText(this, R.string.permission_required, Toast.LENGTH_LONG).show();
         if (requestCode == REQUEST_RECORD_AUDIO && !shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)) {
-            Intent settingsIntent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                    .setData(Uri.parse("package:" + getPackageName()));
-            startActivity(settingsIntent);
+            startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.parse("package:" + getPackageName())));
         }
     }
 }
