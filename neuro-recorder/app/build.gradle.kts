@@ -56,4 +56,8 @@ android {
 
 dependencies {
     implementation("androidx.core:core:1.15.0")
+    implementation("androidx.work:work-runtime:2.10.0")
+    implementation("com.k2fsa.sherpa.onnx:sherpa-onnx-android:1.13.4")
+    implementation("com.google.mediapipe:tasks-genai:0.10.27")
+    testImplementation("junit:junit:4.13.2")
 }
