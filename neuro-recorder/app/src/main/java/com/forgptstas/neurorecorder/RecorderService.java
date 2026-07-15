@@ -8,6 +8,8 @@ import android.app.Service;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.net.Uri;
 import android.os.Build;
@@ -17,8 +19,10 @@ import android.provider.MediaStore;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -37,8 +41,14 @@ public final class RecorderService extends Service {
     private static final String CHANNEL_ID = "neuro_recorder_recording";
     private static final int NOTIFICATION_ID = 7;
 
-    private MediaRecorder mediaRecorder;
-    private boolean recording;
+    private static final int SAMPLE_RATE_HZ = 16_000;
+    private static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO;
+    private static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
+    private static final int WAV_HEADER_BYTES = 44;
+
+    private AudioRecord audioRecord;
+    private Thread recordingThread;
+    private volatile boolean recording;
     private File temporaryFile;
     private String lastFileUri;
     private String lastFileName;
@@ -78,27 +88,36 @@ public final class RecorderService extends Service {
         }
 
         String timestamp = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(new Date());
-        lastFileName = "meeting_" + timestamp + ".m4a";
+        lastFileName = "meeting_" + timestamp + ".wav";
         temporaryFile = new File(cacheDirectory, lastFileName);
         lastFileUri = null;
 
         try {
-            mediaRecorder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                    ? new MediaRecorder(this)
-                    : new MediaRecorder();
-            mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-            mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-            mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-            mediaRecorder.setAudioEncodingBitRate(128_000);
-            mediaRecorder.setAudioSamplingRate(44_100);
-            mediaRecorder.setOutputFile(temporaryFile.getAbsolutePath());
-            mediaRecorder.prepare();
-            mediaRecorder.start();
+            int bufferSize = Math.max(
+                    AudioRecord.getMinBufferSize(SAMPLE_RATE_HZ, CHANNEL_CONFIG, AUDIO_FORMAT),
+                    SAMPLE_RATE_HZ * 2
+            );
+            audioRecord = new AudioRecord(
+                    MediaRecorder.AudioSource.MIC,
+                    SAMPLE_RATE_HZ,
+                    CHANNEL_CONFIG,
+                    AUDIO_FORMAT,
+                    bufferSize
+            );
+            if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                throw new IOException("AudioRecord не инициализировался");
+            }
 
+            writeEmptyWavHeader(temporaryFile);
             recording = true;
+            audioRecord.startRecording();
+            recordingThread = new Thread(() -> writePcmToWav(bufferSize), "neurorecorder-pcm-writer");
+            recordingThread.start();
+
             startForeground(NOTIFICATION_ID, buildNotification());
             broadcastState(null);
         } catch (IOException | RuntimeException exception) {
+            recording = false;
             releaseRecorder();
             deleteTemporaryFile();
             broadcastState("Ошибка записи: " + safeMessage(exception));
@@ -114,12 +133,15 @@ public final class RecorderService extends Service {
         }
 
         String error = null;
+        recording = false;
         try {
-            mediaRecorder.stop();
+            if (audioRecord != null) {
+                audioRecord.stop();
+            }
         } catch (RuntimeException exception) {
             error = "Запись получилась слишком короткой или повреждена.";
         } finally {
-            recording = false;
+            waitForRecordingThread();
             releaseRecorder();
             stopForeground(STOP_FOREGROUND_REMOVE);
         }
@@ -144,7 +166,7 @@ public final class RecorderService extends Service {
 
         ContentValues values = new ContentValues();
         values.put(MediaStore.Audio.Media.DISPLAY_NAME, lastFileName);
-        values.put(MediaStore.Audio.Media.MIME_TYPE, "audio/mp4");
+        values.put(MediaStore.Audio.Media.MIME_TYPE, "audio/wav");
         values.put(MediaStore.Audio.Media.RELATIVE_PATH, Environment.DIRECTORY_MUSIC + "/NeuroRecorder");
         values.put(MediaStore.Audio.Media.IS_PENDING, 1);
 
@@ -234,16 +256,88 @@ public final class RecorderService extends Service {
         sendBroadcast(state);
     }
 
-    private void releaseRecorder() {
-        if (mediaRecorder == null) {
+    private void writePcmToWav(int bufferSize) {
+        byte[] buffer = new byte[bufferSize];
+        long pcmBytes = 0;
+        try (FileOutputStream output = new FileOutputStream(temporaryFile, true)) {
+            while (recording && audioRecord != null) {
+                int read = audioRecord.read(buffer, 0, buffer.length);
+                if (read > 0) {
+                    output.write(buffer, 0, read);
+                    pcmBytes += read;
+                }
+            }
+            output.flush();
+        } catch (IOException | RuntimeException ignored) {
+            // Ошибка будет видна по нулевому/повреждённому файлу при публикации.
+        } finally {
+            if (pcmBytes > 0) {
+                try {
+                    updateWavHeader(temporaryFile, pcmBytes);
+                } catch (IOException ignored) {
+                }
+            }
+        }
+    }
+
+    private void waitForRecordingThread() {
+        if (recordingThread == null) {
             return;
         }
         try {
-            mediaRecorder.reset();
-        } catch (RuntimeException ignored) {
+            recordingThread.join(2_000);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
         }
-        mediaRecorder.release();
-        mediaRecorder = null;
+        recordingThread = null;
+    }
+
+    private void releaseRecorder() {
+        if (audioRecord == null) {
+            return;
+        }
+        audioRecord.release();
+        audioRecord = null;
+    }
+
+    private static void writeEmptyWavHeader(File file) throws IOException {
+        try (FileOutputStream output = new FileOutputStream(file, false)) {
+            output.write(new byte[WAV_HEADER_BYTES]);
+        }
+    }
+
+    private static void updateWavHeader(File file, long pcmBytes) throws IOException {
+        try (RandomAccessFile wav = new RandomAccessFile(file, "rw")) {
+            wav.seek(0);
+            writeAscii(wav, "RIFF");
+            writeLittleEndianInt(wav, 36 + pcmBytes);
+            writeAscii(wav, "WAVEfmt ");
+            writeLittleEndianInt(wav, 16);
+            writeLittleEndianShort(wav, 1);
+            writeLittleEndianShort(wav, 1);
+            writeLittleEndianInt(wav, SAMPLE_RATE_HZ);
+            writeLittleEndianInt(wav, SAMPLE_RATE_HZ * 2);
+            writeLittleEndianShort(wav, 2);
+            writeLittleEndianShort(wav, 16);
+            writeAscii(wav, "data");
+            writeLittleEndianInt(wav, pcmBytes);
+        }
+    }
+
+    private static void writeAscii(RandomAccessFile file, String value) throws IOException {
+        file.write(value.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+    }
+
+    private static void writeLittleEndianInt(RandomAccessFile file, long value) throws IOException {
+        file.write((int) (value & 0xff));
+        file.write((int) ((value >> 8) & 0xff));
+        file.write((int) ((value >> 16) & 0xff));
+        file.write((int) ((value >> 24) & 0xff));
+    }
+
+    private static void writeLittleEndianShort(RandomAccessFile file, int value) throws IOException {
+        file.write(value & 0xff);
+        file.write((value >> 8) & 0xff);
     }
 
     private void deleteTemporaryFile() {

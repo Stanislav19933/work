@@ -26,10 +26,20 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.File;
+import androidx.work.Data;
+import androidx.work.ExistingWorkPolicy;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkInfo;
+import androidx.work.WorkManager;
+
 import java.text.DateFormat;
 import java.util.Date;
 import java.util.List;
+
+import com.forgptstas.neurorecorder.modules.storage.StorageModule;
+import com.forgptstas.neurorecorder.modules.recorder.AndroidRecorderModule;
+import com.forgptstas.neurorecorder.modules.export.TxtExportModule;
+
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
@@ -39,11 +49,14 @@ public final class MainActivity extends Activity {
     private Button recordButton;
     private TextView statusText;
     private TextView archiveEmptyText;
+    private Button modelsButton;
     private LinearLayout archiveContainer;
-    private RecordingRepository recordingRepository;
+    private StorageModule storageModule;
+    private AndroidRecorderModule recorderModule;
     private TranscriptStore transcriptStore;
-    private WhisperModelManager modelManager;
-    private WhisperEngine whisperEngine;
+    private SummaryStore summaryStore;
+    private DiarizationStore diarizationStore;
+    private TxtExportModule txtExportModule;
 
     private boolean recording;
     private MediaPlayer mediaPlayer;
@@ -76,6 +89,7 @@ public final class MainActivity extends Activity {
                 return;
             }
             recording = intent.getBooleanExtra(RecorderService.EXTRA_RECORDING, false);
+            recorderModule.setRecordingState(recording);
             String error = intent.getStringExtra(RecorderService.EXTRA_ERROR);
             if (error != null && !error.isBlank()) {
                 Toast.makeText(MainActivity.this, error, Toast.LENGTH_LONG).show();
@@ -95,15 +109,20 @@ public final class MainActivity extends Activity {
         recordButton = findViewById(R.id.recordButton);
         statusText = findViewById(R.id.statusText);
         archiveEmptyText = findViewById(R.id.archiveEmptyText);
+        modelsButton = findViewById(R.id.modelsButton);
         archiveContainer = findViewById(R.id.archiveContainer);
-        recordingRepository = new RecordingRepository(this);
+        storageModule = new RecordingRepository(this);
+        recorderModule = new AndroidRecorderModule(this);
         transcriptStore = new TranscriptStore(this);
-        modelManager = new WhisperModelManager(this);
-        whisperEngine = new WhisperEngine();
+        summaryStore = new SummaryStore(this);
+        diarizationStore = new DiarizationStore(this);
+        txtExportModule = new TxtExportModule();
+
+        modelsButton.setOnClickListener(view -> startActivity(new Intent(this, ModelStatusActivity.class)));
 
         recordButton.setOnClickListener(view -> {
             if (recording) {
-                sendCommand(RecorderService.ACTION_STOP);
+                stopRecording();
             } else {
                 ensurePermissionsAndStart();
             }
@@ -122,7 +141,7 @@ public final class MainActivity extends Activity {
         } else {
             registerReceiver(recorderReceiver, filter);
         }
-        sendCommand(RecorderService.ACTION_QUERY);
+        queryRecordingState();
         loadArchive();
     }
 
@@ -149,19 +168,30 @@ public final class MainActivity extends Activity {
             return;
         }
         stopPlayback();
-        sendCommand(RecorderService.ACTION_START);
+        startRecording();
     }
 
-    private void sendCommand(String action) {
-        Intent intent = new Intent(this, RecorderService.class).setAction(action);
+    private void startRecording() {
         try {
-            if (RecorderService.ACTION_START.equals(action)) {
-                startForegroundService(intent);
-            } else {
-                startService(intent);
-            }
+            recorderModule.startRecording();
         } catch (Exception exception) {
-            Toast.makeText(this, "Не удалось выполнить команду: " + exception.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Не удалось начать запись: " + exception.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void stopRecording() {
+        try {
+            recorderModule.stopRecording();
+        } catch (Exception exception) {
+            Toast.makeText(this, "Не удалось остановить запись: " + exception.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void queryRecordingState() {
+        try {
+            recorderModule.queryRecordingState();
+        } catch (Exception ignored) {
+            // Сервис мог ещё не быть запущен — UI останется в состоянии Ready.
         }
     }
 
@@ -173,7 +203,7 @@ public final class MainActivity extends Activity {
 
     private void loadArchive() {
         new Thread(() -> {
-            List<RecordingItem> items = recordingRepository.loadAll();
+            List<RecordingItem> items = storageModule.loadRecordings();
             runOnUiThread(() -> renderArchive(items));
         }, "recording-archive-loader").start();
     }
@@ -206,6 +236,7 @@ public final class MainActivity extends Activity {
         title.setTextColor(Color.rgb(17, 24, 39));
         title.setTextSize(17);
         title.setTypeface(null, android.graphics.Typeface.BOLD);
+        title.setOnClickListener(view -> openRecordingDetails(item));
         card.addView(title);
 
         TextView metadata = new TextView(this);
@@ -224,15 +255,23 @@ public final class MainActivity extends Activity {
         Button playButton = compactButton(getString(R.string.play));
         Button transcribeButton = compactButton(getString(R.string.transcribe));
         Button renameButton = compactButton(getString(R.string.rename));
+        Button summaryButton = compactButton(getString(R.string.summary));
         Button shareButton = compactButton(getString(R.string.share));
         actions.addView(playButton);
         actions.addView(transcribeButton);
         actions.addView(renameButton);
+        actions.addView(summaryButton);
         actions.addView(shareButton);
         card.addView(actions);
 
         Button deleteButton = compactButton(getString(R.string.delete));
+        Button exportTxtButton = compactButton(getString(R.string.export_txt));
+        Button exportDocxButton = compactButton(getString(R.string.export_docx));
+        Button exportPdfButton = compactButton(getString(R.string.export_pdf));
         LinearLayout deleteRow = new LinearLayout(this);
+        deleteRow.addView(exportTxtButton);
+        deleteRow.addView(exportDocxButton);
+        deleteRow.addView(exportPdfButton);
         deleteRow.addView(deleteButton);
         card.addView(deleteRow);
 
@@ -250,10 +289,27 @@ public final class MainActivity extends Activity {
         }
         card.addView(transcriptView);
 
+        TextView summaryView = new TextView(this);
+        summaryView.setTextColor(Color.rgb(31, 41, 55));
+        summaryView.setTextSize(14);
+        summaryView.setPadding(0, dp(10), 0, 0);
+        String savedSummary = summaryStore.load(item);
+        if (savedSummary == null || savedSummary.isBlank()) {
+            summaryView.setVisibility(View.GONE);
+        } else {
+            summaryView.setText(savedSummary);
+            summaryView.setVisibility(View.VISIBLE);
+        }
+        card.addView(summaryView);
+
         playButton.setOnClickListener(view -> togglePlayback(item, playButton, seekBar));
         transcribeButton.setOnClickListener(view -> transcribe(item, transcribeButton, transcriptView));
         renameButton.setOnClickListener(view -> showRenameDialog(item));
+        summaryButton.setOnClickListener(view -> summarize(item, summaryButton, summaryView));
         shareButton.setOnClickListener(view -> shareRecording(item));
+        exportTxtButton.setOnClickListener(view -> shareTranscriptTxt(item));
+        exportDocxButton.setOnClickListener(view -> shareTranscriptDocx(item));
+        exportPdfButton.setOnClickListener(view -> shareTranscriptPdf(item));
         deleteButton.setOnClickListener(view -> confirmDelete(item));
 
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -273,40 +329,210 @@ public final class MainActivity extends Activity {
         return card;
     }
 
+    private void openRecordingDetails(RecordingItem item) {
+        Intent intent = new Intent(this, RecordingDetailsActivity.class)
+                .putExtra(RecordingDetailsActivity.EXTRA_ID, item.getId())
+                .putExtra(RecordingDetailsActivity.EXTRA_URI, item.getUri().toString())
+                .putExtra(RecordingDetailsActivity.EXTRA_NAME, item.getName())
+                .putExtra(RecordingDetailsActivity.EXTRA_DATE_ADDED, item.getDateAddedSeconds())
+                .putExtra(RecordingDetailsActivity.EXTRA_DURATION, item.getDurationMillis())
+                .putExtra(RecordingDetailsActivity.EXTRA_SIZE, item.getSizeBytes());
+        startActivity(intent);
+    }
+
     private void transcribe(RecordingItem item, Button button, TextView transcriptView) {
         stopPlayback();
         button.setEnabled(false);
-        button.setText(modelManager.isReady() ? R.string.transcribing : R.string.model_downloading);
+        button.setText(R.string.transcribing);
         transcriptView.setVisibility(View.VISIBLE);
-        transcriptView.setText(modelManager.isReady() ? R.string.audio_preparing : R.string.model_download_first_time);
+        transcriptView.setText(R.string.processing_queued);
 
-        new Thread(() -> {
-            try {
-                File model = modelManager.ensureModel(percent -> runOnUiThread(() -> {
-                    button.setText(getString(R.string.model_download_progress, percent));
-                    transcriptView.setText(getString(R.string.model_download_progress_long, percent));
-                }));
-                runOnUiThread(() -> {
-                    button.setText(R.string.transcribing);
-                    transcriptView.setText(R.string.audio_preparing);
-                });
-                float[] samples = AudioDecoder.decodeToMono16Khz(this, item.getUri());
-                runOnUiThread(() -> transcriptView.setText(R.string.whisper_processing));
-                String text = whisperEngine.transcribe(model, samples, "ru");
-                transcriptStore.save(item, text);
-                runOnUiThread(() -> {
-                    transcriptView.setText(text);
-                    button.setEnabled(true);
-                    button.setText(R.string.transcribe_again);
-                });
-            } catch (Exception exception) {
-                runOnUiThread(() -> {
-                    button.setEnabled(true);
-                    button.setText(R.string.transcribe);
-                    transcriptView.setText("Ошибка расшифровки: " + safeMessage(exception));
-                });
+        Data input = new Data.Builder()
+                .putLong(TranscriptionWorker.KEY_ID, item.getId())
+                .putString(TranscriptionWorker.KEY_URI, item.getUri().toString())
+                .putString(TranscriptionWorker.KEY_NAME, item.getName())
+                .putLong(TranscriptionWorker.KEY_DATE_ADDED, item.getDateAddedSeconds())
+                .putLong(TranscriptionWorker.KEY_DURATION, item.getDurationMillis())
+                .putLong(TranscriptionWorker.KEY_SIZE, item.getSizeBytes())
+                .build();
+        OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(TranscriptionWorker.class)
+                .setInputData(input)
+                .addTag("transcription")
+                .build();
+        WorkManager workManager = WorkManager.getInstance(this);
+        workManager.enqueueUniqueWork("transcription-" + item.getId(), ExistingWorkPolicy.REPLACE, request);
+        watchTranscriptionWork(workManager, request, item, button, transcriptView);
+    }
+
+    private void watchTranscriptionWork(
+            WorkManager workManager,
+            OneTimeWorkRequest request,
+            RecordingItem item,
+            Button button,
+            TextView transcriptView
+    ) {
+        playbackHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                new Thread(() -> {
+                    try {
+                        WorkInfo workInfo = workManager.getWorkInfoById(request.getId()).get();
+                        runOnUiThread(() -> handleTranscriptionWorkInfo(workInfo, workManager, request, item, button, transcriptView, this));
+                    } catch (Exception exception) {
+                        runOnUiThread(() -> {
+                            button.setEnabled(true);
+                            button.setText(R.string.transcribe);
+                            transcriptView.setText("Ошибка расшифровки: " + safeMessage(exception));
+                        });
+                    }
+                }, "transcription-work-watch").start();
             }
-        }, "whisper-transcription").start();
+        }, 600);
+    }
+
+    private void handleTranscriptionWorkInfo(
+            WorkInfo workInfo,
+            WorkManager workManager,
+            OneTimeWorkRequest request,
+            RecordingItem item,
+            Button button,
+            TextView transcriptView,
+            Runnable watcher
+    ) {
+        if (workInfo == null) {
+            playbackHandler.postDelayed(watcher, 600);
+            return;
+        }
+        if (workInfo.getState() == WorkInfo.State.SUCCEEDED) {
+            String text = transcriptStore.load(item);
+            transcriptView.setText(text == null || text.isBlank() ? getString(R.string.details_no_transcript) : text);
+            button.setEnabled(true);
+            button.setText(R.string.transcribe_again);
+            return;
+        }
+        if (workInfo.getState() == WorkInfo.State.FAILED || workInfo.getState() == WorkInfo.State.CANCELLED) {
+            String error = workInfo.getOutputData().getString(TranscriptionWorker.KEY_ERROR);
+            transcriptView.setText("Ошибка расшифровки: " + (error == null ? workInfo.getState().name() : error));
+            button.setEnabled(true);
+            button.setText(R.string.transcribe);
+            return;
+        }
+        Data progress = workInfo.getProgress();
+        updateTranscriptionProgress(progress.getString(TranscriptionWorker.KEY_MESSAGE), progress.getInt(TranscriptionWorker.KEY_PERCENT, 0), button, transcriptView);
+        playbackHandler.postDelayed(watcher, 800);
+    }
+
+    private void updateTranscriptionProgress(String message, int percent, Button button, TextView transcriptView) {
+        if ("model".equals(message)) {
+            button.setText(getString(R.string.model_download_progress, percent));
+            transcriptView.setText(getString(R.string.model_download_progress_long, percent));
+        } else if ("vad_model".equals(message)) {
+            button.setText(getString(R.string.model_download_progress, percent));
+            transcriptView.setText("Скачиваю модель определения речи: " + percent + "%");
+        } else if ("audio".equals(message)) {
+            button.setText(R.string.transcribing);
+            transcriptView.setText(R.string.audio_preparing);
+        } else if ("vad".equals(message)) {
+            transcriptView.setText("Убираю тишину перед расшифровкой: " + percent + "%");
+        } else if ("diarization_model".equals(message)) {
+            button.setText(getString(R.string.model_download_progress, percent));
+            transcriptView.setText("Скачиваю модели разделения говорящих: " + percent + "%");
+        } else if ("diarization".equals(message)) {
+            transcriptView.setText("Разделяю говорящих: " + percent + "%");
+        } else if ("asr".equals(message)) {
+            transcriptView.setText(R.string.whisper_processing);
+        }
+    }
+
+    private void summarize(RecordingItem item, Button button, TextView summaryView) {
+        String transcript = transcriptStore.load(item);
+        if (transcript == null || transcript.isBlank()) {
+            Toast.makeText(this, R.string.summary_no_text, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        button.setEnabled(false);
+        button.setText(R.string.summary_processing);
+        summaryView.setVisibility(View.VISIBLE);
+        summaryView.setText(R.string.summary_processing);
+
+        Data input = new Data.Builder()
+                .putLong(SummaryWorker.KEY_ID, item.getId())
+                .putString(SummaryWorker.KEY_URI, item.getUri().toString())
+                .putString(SummaryWorker.KEY_NAME, item.getName())
+                .putLong(SummaryWorker.KEY_DATE_ADDED, item.getDateAddedSeconds())
+                .putLong(SummaryWorker.KEY_DURATION, item.getDurationMillis())
+                .putLong(SummaryWorker.KEY_SIZE, item.getSizeBytes())
+                .build();
+        OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(SummaryWorker.class)
+                .setInputData(input)
+                .addTag("summary")
+                .build();
+        WorkManager workManager = WorkManager.getInstance(this);
+        workManager.enqueueUniqueWork("summary-" + item.getId(), ExistingWorkPolicy.REPLACE, request);
+        watchSummaryWork(workManager, request, item, button, summaryView);
+    }
+
+    private void watchSummaryWork(
+            WorkManager workManager,
+            OneTimeWorkRequest request,
+            RecordingItem item,
+            Button button,
+            TextView summaryView
+    ) {
+        playbackHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                new Thread(() -> {
+                    try {
+                        WorkInfo workInfo = workManager.getWorkInfoById(request.getId()).get();
+                        runOnUiThread(() -> handleSummaryWorkInfo(workInfo, workManager, request, item, button, summaryView, this));
+                    } catch (Exception exception) {
+                        runOnUiThread(() -> {
+                            button.setEnabled(true);
+                            button.setText(R.string.summary);
+                            summaryView.setText(getString(R.string.summary_error) + " " + safeMessage(exception));
+                        });
+                    }
+                }, "summary-work-watch").start();
+            }
+        }, 500);
+    }
+
+    private void handleSummaryWorkInfo(
+            WorkInfo workInfo,
+            WorkManager workManager,
+            OneTimeWorkRequest request,
+            RecordingItem item,
+            Button button,
+            TextView summaryView,
+            Runnable watcher
+    ) {
+        if (workInfo == null || workInfo.getState() == WorkInfo.State.RUNNING || workInfo.getState() == WorkInfo.State.ENQUEUED) {
+            Data progress = workInfo == null ? Data.EMPTY : workInfo.getProgress();
+            int percent = progress.getInt(SummaryWorker.KEY_PROGRESS_PERCENT, -1);
+            String stage = progress.getString(SummaryWorker.KEY_PROGRESS_STAGE);
+            if (percent >= 0) {
+                if ("summary_model".equals(stage)) {
+                    button.setText(getString(R.string.model_download_progress, percent));
+                    summaryView.setText("Скачиваю локальную SLM-модель для саммари: " + percent + "%");
+                } else if ("summary".equals(stage)) {
+                    summaryView.setText("Локальная SLM-модель готовит саммари: " + percent + "%");
+                }
+            }
+            playbackHandler.postDelayed(watcher, 700);
+            return;
+        }
+        if (workInfo.getState() == WorkInfo.State.SUCCEEDED) {
+            String summary = summaryStore.load(item);
+            summaryView.setText(summary == null || summary.isBlank() ? getString(R.string.details_no_summary) : summary);
+            button.setEnabled(true);
+            button.setText(R.string.summary);
+            return;
+        }
+        String error = workInfo.getOutputData().getString(SummaryWorker.KEY_ERROR);
+        summaryView.setText(getString(R.string.summary_error) + " " + (error == null ? workInfo.getState().name() : error));
+        button.setEnabled(true);
+        button.setText(R.string.summary);
     }
 
     private Button compactButton(String text) {
@@ -387,7 +613,7 @@ public final class MainActivity extends Activity {
                 .setView(input)
                 .setPositiveButton(R.string.save, (dialog, which) -> {
                     stopPlayback();
-                    boolean renamed = recordingRepository.rename(item, input.getText().toString());
+                    boolean renamed = storageModule.renameRecording(item, input.getText().toString());
                     Toast.makeText(this, renamed ? R.string.rename_success : R.string.rename_error, Toast.LENGTH_SHORT).show();
                     loadArchive();
                 })
@@ -401,8 +627,12 @@ public final class MainActivity extends Activity {
                 .setMessage(getString(R.string.delete_confirmation, item.getName()))
                 .setPositiveButton(R.string.delete, (dialog, which) -> {
                     stopPlayback();
-                    boolean deleted = recordingRepository.delete(item);
-                    if (deleted) transcriptStore.delete(item);
+                    boolean deleted = storageModule.deleteRecording(item);
+                    if (deleted) {
+                        transcriptStore.delete(item);
+                        summaryStore.delete(item);
+                        diarizationStore.delete(item);
+                    }
                     Toast.makeText(this, deleted ? R.string.delete_success : R.string.delete_error, Toast.LENGTH_SHORT).show();
                     loadArchive();
                 })
@@ -410,9 +640,88 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
+    private void shareTranscriptTxt(RecordingItem item) {
+        shareTranscriptExport(
+                item,
+                "text/plain",
+                R.string.share_transcript_txt,
+                R.string.export_txt_error,
+                transcript -> txtExportModule.exportTranscriptTxt(this, item.getName(), transcript)
+        );
+    }
+
+    private void shareTranscriptDocx(RecordingItem item) {
+        shareTranscriptExport(
+                item,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                R.string.share_transcript_docx,
+                R.string.export_docx_error,
+                transcript -> txtExportModule.exportTranscriptDocx(this, item.getName(), transcript)
+        );
+    }
+
+    private void shareTranscriptPdf(RecordingItem item) {
+        shareTranscriptExport(
+                item,
+                "application/pdf",
+                R.string.share_transcript_pdf,
+                R.string.export_pdf_error,
+                transcript -> txtExportModule.exportTranscriptPdf(this, item.getName(), transcript)
+        );
+    }
+
+    private void shareTranscriptExport(
+            RecordingItem item,
+            String mimeType,
+            int chooserTitle,
+            int errorMessage,
+            TranscriptExporter exporter
+    ) {
+        String transcript = transcriptStore.load(item);
+        if (transcript == null || transcript.isBlank()) {
+            Toast.makeText(this, R.string.export_txt_no_text, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String exportText = buildExportText(item, transcript);
+        try {
+            Uri uri = exporter.export(exportText);
+            Intent share = new Intent(Intent.ACTION_SEND)
+                    .setType(mimeType)
+                    .putExtra(Intent.EXTRA_STREAM, uri)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(share, getString(chooserTitle)));
+        } catch (Exception exception) {
+            Toast.makeText(this, getString(errorMessage) + " " + safeMessage(exception), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private String buildExportText(RecordingItem item, String transcript) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(item.getName()).append("\n\n");
+        String summary = summaryStore.load(item);
+        if (summary != null && !summary.isBlank()) {
+            builder.append("Саммари встречи\n")
+                    .append(summary)
+                    .append("\n\n");
+        }
+        String speakers = diarizationStore.load(item);
+        if (speakers != null && !speakers.isBlank()) {
+            builder.append("По участникам\n")
+                    .append(speakers)
+                    .append("\n");
+        }
+        builder.append("Расшифровка\n")
+                .append(transcript);
+        return builder.toString();
+    }
+
+    private interface TranscriptExporter {
+        Uri export(String transcript) throws Exception;
+    }
+
     private void shareRecording(RecordingItem item) {
         Intent share = new Intent(Intent.ACTION_SEND)
-                .setType("audio/mp4")
+                .setType("audio/wav")
                 .putExtra(Intent.EXTRA_STREAM, item.getUri())
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         startActivity(Intent.createChooser(share, getString(R.string.share_recording)));
