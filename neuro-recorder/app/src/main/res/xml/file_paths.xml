@@ -3,4 +3,7 @@
     <external-files-path
         name="recordings"
         path="Music/" />
+    <cache-path
+        name="exports"
+        path="exports/" />
 </paths>

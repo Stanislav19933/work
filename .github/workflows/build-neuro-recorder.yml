@@ -84,6 +84,14 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Run JVM tests
+        working-directory: neuro-recorder
+        run: gradle --no-daemon test
+
+      - name: Run Android lint
+        working-directory: neuro-recorder
+        run: gradle --no-daemon lint
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

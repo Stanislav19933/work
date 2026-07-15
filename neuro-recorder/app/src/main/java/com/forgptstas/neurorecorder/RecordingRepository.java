@@ -10,10 +10,12 @@ import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
 
+import com.forgptstas.neurorecorder.modules.storage.StorageModule;
+
 import java.util.ArrayList;
 import java.util.List;
 
-public final class RecordingRepository {
+public final class RecordingRepository implements StorageModule {
     private static final String RELATIVE_PATH = Environment.DIRECTORY_MUSIC + "/NeuroRecorder/";
 
     private final ContentResolver resolver;
@@ -22,7 +24,8 @@ public final class RecordingRepository {
         resolver = context.getApplicationContext().getContentResolver();
     }
 
-    public List<RecordingItem> loadAll() {
+    @Override
+    public List<RecordingItem> loadRecordings() {
         List<RecordingItem> items = new ArrayList<>();
         Uri collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
         String[] projection = new String[]{
@@ -76,13 +79,14 @@ public final class RecordingRepository {
         return items;
     }
 
-    public boolean rename(RecordingItem item, String requestedName) {
+    @Override
+    public boolean renameRecording(RecordingItem item, String requestedName) {
         String cleaned = requestedName == null ? "" : requestedName.trim();
         if (cleaned.isEmpty()) {
             return false;
         }
-        if (!cleaned.toLowerCase().endsWith(".m4a")) {
-            cleaned += ".m4a";
+        if (!cleaned.toLowerCase().endsWith(".wav")) {
+            cleaned += ".wav";
         }
         cleaned = cleaned.replaceAll("[\\/:*?\"<>|]", "_");
 
@@ -91,7 +95,24 @@ public final class RecordingRepository {
         return resolver.update(item.getUri(), values, null, null) > 0;
     }
 
-    public boolean delete(RecordingItem item) {
+    @Override
+    public boolean deleteRecording(RecordingItem item) {
         return resolver.delete(item.getUri(), null, null) > 0;
+    }
+    public List<RecordingItem> loadAll() {
+        return loadRecordings();
+    }
+
+    public boolean rename(RecordingItem item, String requestedName) {
+        return renameRecording(item, requestedName);
+    }
+
+    public boolean delete(RecordingItem item) {
+        return deleteRecording(item);
+    }
+
+    @Override
+    public Uri getRecordingUri(RecordingItem item) {
+        return item.getUri();
     }
 }
