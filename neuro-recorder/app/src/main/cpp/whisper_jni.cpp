@@ -1,11 +1,17 @@
 #include <jni.h>
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <thread>
 #include "whisper.h"
 
+namespace {
+constexpr char RECORD_SEPARATOR = '\x1e';
+constexpr char FIELD_SEPARATOR = '\x1f';
+}
+
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_forgptstas_neurorecorder_WhisperEngine_transcribeNative(
+Java_com_forgptstas_neurorecorder_WhisperEngine_transcribeSegmentsNative(
         JNIEnv *env,
         jobject,
         jstring modelPath,
@@ -36,7 +42,9 @@ Java_com_forgptstas_neurorecorder_WhisperEngine_transcribeNative(
     params.translate = false;
     params.no_context = true;
     params.single_segment = false;
-    params.n_threads = threads > 0 ? threads : std::max(1u, std::thread::hardware_concurrency() / 2);
+    const unsigned int hardwareThreads = std::thread::hardware_concurrency();
+    const int defaultThreads = static_cast<int>(std::max(1u, hardwareThreads / 2u));
+    params.n_threads = threads > 0 ? threads : defaultThreads;
     params.language = lang;
 
     const int result = whisper_full(ctx, params, pcm.data(), static_cast<int>(pcm.size()));
@@ -51,9 +59,19 @@ Java_com_forgptstas_neurorecorder_WhisperEngine_transcribeNative(
     const int segments = whisper_full_n_segments(ctx);
     for (int i = 0; i < segments; ++i) {
         const char *text = whisper_full_get_segment_text(ctx, i);
-        if (text != nullptr) {
-            output += text;
+        if (text == nullptr) {
+            continue;
         }
+        const int64_t startMillis = whisper_full_get_segment_t0(ctx, i) * 10;
+        const int64_t endMillis = whisper_full_get_segment_t1(ctx, i) * 10;
+        if (!output.empty()) {
+            output.push_back(RECORD_SEPARATOR);
+        }
+        output += std::to_string(startMillis);
+        output.push_back(FIELD_SEPARATOR);
+        output += std::to_string(endMillis);
+        output.push_back(FIELD_SEPARATOR);
+        output += text;
     }
 
     whisper_free(ctx);

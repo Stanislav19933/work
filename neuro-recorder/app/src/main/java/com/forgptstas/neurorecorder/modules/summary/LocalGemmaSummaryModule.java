@@ -78,22 +78,18 @@ public final class LocalGemmaSummaryModule implements SummaryModule {
     }
 
     private static String buildPrompt(String transcript) {
-        StringBuilder prompt = new StringBuilder();
-        prompt.append("Ты локальный помощник NeuroRecorder. Данные нельзя отправлять в интернет. ")
-                .append("Сделай строго структурированное саммари встречи на русском языке. ")
-                .append("Не выдумывай факты: если пункт не найден, напиши 'Не найдено'.")
-                .append('\n').append('\n')
-                .append("Верни ответ ровно в таком формате:").append('\n')
-                .append("Краткое содержание:").append('\n').append("...").append('\n').append('\n')
-                .append("Задачи:").append('\n').append("- ...").append('\n').append('\n')
-                .append("Ответственные:").append('\n').append("- ...").append('\n').append('\n')
-                .append("Сроки:").append('\n').append("- ...").append('\n').append('\n')
-                .append("Открытые вопросы:").append('\n').append("- ...").append('\n').append('\n')
-                .append("Важные цифры:").append('\n').append("- ...").append('\n').append('\n')
-                .append("Решения:").append('\n').append("- ...").append('\n').append('\n')
-                .append("Расшифровка встречи:").append('\n')
-                .append(transcript);
-        return prompt.toString();
+        return "Ты локальный помощник NeuroRecorder. Данные нельзя отправлять в интернет. "
+                + "Сделай строго структурированное саммари встречи на русском языке. "
+                + "Не выдумывай факты: если пункт не найден, напиши 'Не найдено'.\n\n"
+                + "Верни ответ ровно в таком формате:\n"
+                + "Краткое содержание:\n...\n\n"
+                + "Задачи:\n- ...\n\n"
+                + "Ответственные:\n- ...\n\n"
+                + "Сроки:\n- ...\n\n"
+                + "Открытые вопросы:\n- ...\n\n"
+                + "Важные цифры:\n- ...\n\n"
+                + "Решения:\n- ...\n\n"
+                + "Расшифровка встречи:\n" + transcript;
     }
 
     private static String trimTranscript(String transcript) {
