@@ -4,13 +4,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** Speaker-attributed transcript built from diarization/text alignment results. */
 public final class DiarizedTranscript {
     private final List<SpeakerAttributedSegment> segments;
 
     public DiarizedTranscript(List<SpeakerAttributedSegment> segments) {
-        List<SpeakerAttributedSegment> safeSegments = segments == null ? Collections.emptyList() : segments;
-        this.segments = Collections.unmodifiableList(new ArrayList<>(safeSegments));
+        this.segments = Collections.unmodifiableList(new ArrayList<>(segments));
     }
 
     public List<SpeakerAttributedSegment> getSegments() {
@@ -20,6 +18,7 @@ public final class DiarizedTranscript {
     public String toDisplayText() {
         StringBuilder result = new StringBuilder();
         String previousSpeaker = null;
+
         for (SpeakerAttributedSegment segment : segments) {
             if (!segment.getSpeakerLabel().equals(previousSpeaker)) {
                 if (result.length() > 0) {
@@ -32,6 +31,7 @@ public final class DiarizedTranscript {
             }
             result.append(segment.getText().trim());
         }
+
         return result.toString().trim();
     }
 }
