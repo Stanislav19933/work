@@ -5,8 +5,13 @@
 #include <thread>
 #include "whisper.h"
 
+namespace {
+constexpr char RECORD_SEPARATOR = '\x1e';
+constexpr char FIELD_SEPARATOR = '\x1f';
+}
+
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_forgptstas_neurorecorder_WhisperEngine_transcribeNative(
+Java_com_forgptstas_neurorecorder_WhisperEngine_transcribeSegmentsNative(
         JNIEnv *env,
         jobject,
         jstring modelPath,
@@ -54,9 +59,19 @@ Java_com_forgptstas_neurorecorder_WhisperEngine_transcribeNative(
     const int segments = whisper_full_n_segments(ctx);
     for (int i = 0; i < segments; ++i) {
         const char *text = whisper_full_get_segment_text(ctx, i);
-        if (text != nullptr) {
-            output += text;
+        if (text == nullptr) {
+            continue;
         }
+        const int64_t startMillis = whisper_full_get_segment_t0(ctx, i) * 10;
+        const int64_t endMillis = whisper_full_get_segment_t1(ctx, i) * 10;
+        if (!output.empty()) {
+            output.push_back(RECORD_SEPARATOR);
+        }
+        output += std::to_string(startMillis);
+        output.push_back(FIELD_SEPARATOR);
+        output += std::to_string(endMillis);
+        output.push_back(FIELD_SEPARATOR);
+        output += text;
     }
 
     whisper_free(ctx);
