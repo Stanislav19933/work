@@ -45,9 +45,44 @@ jobs:
         run: |
           git clone --depth 1 --branch v1.7.6 https://github.com/ggml-org/whisper.cpp.git neuro-recorder/app/src/main/cpp/whisper.cpp
 
+      - name: Bundle offline diarization models
+        shell: bash
+        run: |
+          set -euo pipefail
+          ASSETS="neuro-recorder/app/src/main/assets/diarization"
+          TMP="$(mktemp -d)"
+          mkdir -p "$ASSETS"
+          curl -fL --retry 3 \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2 \
+            -o "$TMP/segmentation.tar.bz2"
+          tar -xjf "$TMP/segmentation.tar.bz2" -C "$TMP"
+          cp "$TMP/sherpa-onnx-pyannote-segmentation-3-0/model.int8.onnx" "$ASSETS/model.int8.onnx"
+          curl -fL --retry 3 \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx \
+            -o "$ASSETS/nemo_en_titanet_small.onnx"
+          test -s "$ASSETS/model.int8.onnx"
+          test -s "$ASSETS/nemo_en_titanet_small.onnx"
+          rm -rf "$TMP"
+
+      - name: Apply Android compatibility patch
+        run: |
+          sed -i 's/setTextAllCaps(false)/setAllCaps(false)/' neuro-recorder/app/src/main/java/com/forgptstas/neurorecorder/MainActivity.java
+
       - name: Build debug APK
         working-directory: neuro-recorder
-        run: gradle --no-daemon clean assembleDebug
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon clean assembleDebug --stacktrace 2>&1 | tee ../neuro-recorder-build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeuroRecorder-build-log
+          path: neuro-recorder-build.log
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
